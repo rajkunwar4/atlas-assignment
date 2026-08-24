@@ -1,0 +1,31 @@
+{
+  "name": "atlas-reconciliation",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/api-node",
+    "shared/conformance"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "prettier": "^3.6.2"
+  },
+  "scripts": {
+    "install:all": "npm install && python3 -m pip install -r apps/api-python/requirements.txt",
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:node": "npm --workspace apps/api-node run dev",
+    "dev:python": "python3 -m uvicorn app.main:app --app-dir apps/api-python --reload --port 8000",
+    "test:node": "npm --workspace apps/api-node test",
+    "test:web": "npm --workspace apps/web test",
+    "test:python": "python3 -m pytest apps/api-python/tests",
+    "test:conformance": "npm --workspace shared/conformance test",
+    "test:e2e": "playwright test",
+    "quality": "ruff check apps/api-python && prettier --check 'apps/**/*.{ts,tsx,json,css,html}' 'shared/**/*.{js,json}' 'e2e/**/*.ts' 'playwright.config.ts'",
+    "test": "npm run test:python && npm run test:node && npm run test:web",
+    "build": "npm --workspace apps/web run build && npm --workspace apps/api-node run build",
+    "reset:python": "python3 apps/api-python/scripts/reset_db.py",
+    "reset:node": "npm --workspace apps/api-node run reset",
+    "seed:python": "python3 apps/api-python/scripts/seed.py",
+    "seed:node": "npm --workspace apps/api-node run seed"
+  }
+}
