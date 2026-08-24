@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: npm install
+      - run: python -m pip install -r apps/api-python/requirements.txt
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: npm install
+      - run: python -m pip install -r apps/api-python/requirements.txt
+      - run: npm run reset:python && npm run reset:node
+      - run: npm run dev:python &
+      - run: npm run dev:node &
+      - run: |
+          for i in {1..30}; do curl -sf http://localhost:8000/api/health && curl -sf http://localhost:8001/api/health && break; sleep 1; done
+      - run: npm run seed:python && npm run seed:node
+      - run: curl -sf -X POST http://localhost:8000/api/runs && curl -sf -X POST http://localhost:8001/api/runs
+      - run: npm run test:conformance

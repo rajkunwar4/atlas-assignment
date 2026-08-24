@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 dist/
+*.tsbuildinfo
 playwright-report/
 test-results/
 *.db
@@ -11,4 +12,3 @@ test-results/
 *.sqlite3
 .env
 .DS_Store
-
