@@ -1,0 +1,15 @@
+{
+  "summary": {
+    "matched": 1,
+    "different": 2,
+    "unmatched_ledger": 1,
+    "unmatched_counterparty": 1,
+    "excluded": 1
+  },
+  "notable": {
+    "T-1001": "MATCHED",
+    "T-1011": "DIFFERENT",
+    "T-1015": "DIFFERENT",
+    "T-1018": "EXCLUDED_CANCELLED"
+  }
+}

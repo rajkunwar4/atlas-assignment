@@ -1,0 +1,113 @@
+openapi: 3.1.0
+info:
+  title: Atlas Reconciliation API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Backend identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/files:
+    get:
+      operationId: listFiles
+      responses:
+        '200': { description: Ingestion history }
+    post:
+      operationId: uploadFile
+      parameters:
+        - in: query
+          name: source
+          required: true
+          schema: { $ref: '#/components/schemas/Source' }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: File accepted }
+        '200': { description: Duplicate file }
+        '422': { description: Validation error }
+  /api/runs:
+    get:
+      operationId: listRuns
+      responses:
+        '200': { description: Run history }
+    post:
+      operationId: createRun
+      responses:
+        '201': { description: Reconciliation completed }
+  /api/runs/{runId}/results:
+    get:
+      operationId: listResults
+      parameters:
+        - { in: path, name: runId, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - { in: query, name: page_size, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Paginated results }
+  /api/runs/{runId}/export:
+    get:
+      operationId: exportRun
+      parameters:
+        - { in: path, name: runId, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: CSV export }
+  /api/resolutions/match:
+    post:
+      operationId: createManualMatch
+      responses:
+        '201': { description: Resolution applied }
+  /api/resolutions/accept-unmatched:
+    post:
+      operationId: acceptUnmatched
+      responses:
+        '201': { description: Resolution applied }
+  /api/settings:
+    get:
+      operationId: getSettings
+      responses:
+        '200': { description: Active tolerance settings }
+    put:
+      operationId: updateSettings
+      responses:
+        '200': { description: Settings updated }
+  /api/transactions/{transactionId}/history:
+    get:
+      operationId: getTransactionHistory
+      parameters:
+        - { in: path, name: transactionId, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Immutable transaction version history }
+        '404': { description: Transaction not found }
+  /api/audit:
+    get:
+      operationId: listAudit
+      responses:
+        '200': { description: Audit events }
+components:
+  schemas:
+    Source:
+      type: string
+      enum: [LEDGER, COUNTERPARTY]
+    Health:
+      type: object
+      required: [status, implementation, version]
+      properties:
+        status: { type: string, const: ok }
+        implementation: { type: string, enum: [python, node] }
+        version: { type: string }
