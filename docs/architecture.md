@@ -37,7 +37,7 @@ erDiagram
   MANUAL_RESOLUTION ||--o{ AUDIT_EVENT : records
 ```
 
-`source_transactions` provide stable identity. `transaction_versions` are immutable and the stable record points to the current version. Run items reference the exact versions used, making old runs reproducible. Tolerances are snapshotted as JSON on each run.
+`source_transactions` provide stable identity. `transaction_versions` are immutable and the stable record points to the current version. A run item's JSONB result embeds the exact version IDs and normalized values used, making old runs reproducible. Tolerances are snapshotted as JSONB on each run.
 
 ## Ingestion and correction lifecycle
 
@@ -109,11 +109,15 @@ stateDiagram-v2
   CLOSED --> [*]
 ```
 
-`MATCHED_WITH_DIFFERENCES`, ledger-unmatched, and counterparty-unmatched items are review exceptions. A run becomes ready only after every exception has an active decision. Closed runs and their item snapshots are immutable; subsequent uploads always produce a new run.
+`DIFFERENT`, ledger-unmatched, and counterparty-unmatched items are review exceptions. A run becomes ready only after every exception has an active decision. Closed runs and their item snapshots are immutable; subsequent uploads always produce a new run.
+
+Changed uploads are rejected while a run is open. Exact duplicate uploads remain harmless no-ops. This prevents a manual action from rebuilding an open run against transaction versions different from its original snapshot.
 
 ## API and error strategy
 
 `shared/openapi/openapi.yaml` is the public contract. Both services return UTC ISO timestamps, decimal strings, the same enums, and `{error: {code, message, details}}` failures. Validation completes before database mutation. Unexpected failures become generic 500 responses and retain internal diagnostic context in server logs.
+
+The runtime `DATABASE_URL` may use Neon's pooler. Alembic alone receives `DIRECT_URL`; the Node service checks the `alembic_version` table and fails fast rather than attempting its own migrations. Reset tooling permits local hosts by default and refuses hosted targets unless an explicit override is supplied.
 
 ## Implementation mapping
 

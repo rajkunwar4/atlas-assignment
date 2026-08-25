@@ -31,12 +31,20 @@ See [docs/architecture.md](docs/architecture.md) for the design, data model, mat
 
 ```bash
 npm run install:all
+cp .env.example .env
+npm run db:up
+npm run migrate
 ```
+
+The example environment uses the Docker PostgreSQL service on port `55432`. To use Neon,
+replace `DATABASE_URL` with its pooled connection string and `DIRECT_URL` with the direct
+non-pooler connection string. Keep `TEST_DATABASE_URL` pointed at a disposable local
+database. Never commit `.env` or use the Neon database for destructive tests.
 
 ## Run with the Python backend
 
 ```bash
-npm run reset:python
+npm run reset:db
 npm run seed:python
 npm run dev:python
 ```
@@ -50,7 +58,7 @@ VITE_API_URL=http://localhost:8000 npm run dev:web
 ## Run with the Node backend
 
 ```bash
-npm run reset:node
+npm run reset:db
 npm run seed:node
 npm run dev:node
 ```
@@ -61,17 +69,21 @@ In another terminal:
 VITE_API_URL=http://localhost:8001 npm run dev:web
 ```
 
-Open `http://localhost:5173`. The development backend switcher can move between the Python API on port 8000 and Node API on port 8001 without changing frontend code.
+Open `http://localhost:5173`. The development backend switcher can move between the Python API on port 8000 and Node API on port 8001 without changing frontend code. Both APIs show the same PostgreSQL-backed files, runs, resolutions, and audit history.
+
+Alembic is the only schema migration authority. Always run `npm run migrate` before either
+backend; `npm run check:schema:node` verifies that Node recognizes the migrated schema.
 
 ## Demo workflow
 
-1. Upload `shared/fixtures/ledger.csv` as **Ledger**.
+1. Upload `shared/fixtures/ledger.csv` as **Ledger**, using incremental mode and automatic format detection.
 2. Upload `shared/fixtures/counterparty.csv` as **Counterparty**.
 3. Start a reconciliation run.
 4. Inspect the amount difference on `T-1011` and time difference on `T-1015`.
-5. Manually match `T-1016` to `C-9001`, or accept either row as genuinely unmatched.
-6. Upload `shared/fixtures/ledger-correction.csv` to demonstrate immutable correction history.
-7. Start another run and verify the manual decision persists.
+5. Accept the explained differences, then manually match `T-1016` to `C-9001` or accept rows as genuinely unmatched.
+6. Close the run after its unresolved count reaches zero.
+7. Upload `shared/fixtures/ledger-correction.csv` to demonstrate immutable correction history.
+8. Start another run and verify the manual decision persists.
 
 The seed commands perform the first two uploads automatically.
 
@@ -86,7 +98,7 @@ sitting immediately on either side of each tolerance and scoring threshold. Two 
 files restate a few amounts, two reformatted files restate none, and `shared/fixtures/invalid`
 holds twelve files that must be rejected whole.
 
-Load it with `npm run seed:python -- wide` or `npm run seed:node -- wide` after a reset, or
+Load it with `npm run seed:python -- wide` or `npm run seed:node -- wide` after `npm run reset:db`, or
 upload the two files through the screen.
 
 Every expected outcome is recorded in `shared/expected-results/wide.json` and
@@ -98,11 +110,22 @@ Every expected outcome is recorded in `shared/expected-results/wide.json` and
 ```bash
 npm test
 npm run build
+npm run quality
 ```
 
-Run individual suites with `npm run test:python`, `npm run test:node`, or `npm run test:web`. With both APIs running and seeded, run `npm run test:conformance` to compare their observable results.
+Run individual suites with `npm run test:python`, `npm run test:node`, or `npm run test:web`. The backend suites automatically migrate `TEST_DATABASE_URL`. With both APIs running and one fixture set seeded, run `npm run test:conformance`; each backend independently creates a run and the test compares their normalized outcomes.
 
-Install a Playwright browser once with `npx playwright install chromium`, then run `npm run test:e2e` to execute the same upload, reconciliation, and difference-inspection workflow against both backends. Run `npm run quality` for Python linting and repository formatting checks.
+Install a Playwright browser once with `npx playwright install chromium`, then run `npm run test:e2e` to reset the safe configured database and execute the same upload, reconciliation, and difference-inspection workflow against both backends.
+
+Useful database commands:
+
+```bash
+npm run db:up              # start local PostgreSQL
+npm run migrate            # apply the Alembic schema
+npm run check:schema:node  # confirm Node compatibility
+npm run reset:db           # local/test databases only; remote targets are refused
+npm run db:down            # stop local PostgreSQL
+```
 
 ## Repository structure
 
@@ -118,11 +141,11 @@ docs              Architecture and operational documentation
 
 ## Intentional boundaries
 
-This is a single-operator take-home application. Authentication, background jobs, object storage, multi-tenancy, and hosted deployment are intentionally omitted. Runs execute synchronously and files are held in memory while being validated. A production system would add identity-aware authorization, malware scanning, durable object storage, job queues, metrics, and retention controls.
+This is a single-operator take-home application. Authentication, background jobs, object storage, multi-tenancy, and deployment automation are intentionally omitted. Runs execute synchronously and files are held in memory while being validated. AI is deliberately excluded from matching and approval: financial outcomes remain deterministic and attributable to rules or a named human decision.
 
 ## Future work
 
-- Review and supersede manual resolutions from the UI
+- Expose the existing resolution-supersession API in a dedicated history UI
 - Stream very large files and execute reconciliation in background workers
 - Add an operator UI for registering declarative adapter mappings
 - Add object-storage deployment profiles
