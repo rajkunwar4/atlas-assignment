@@ -29,18 +29,18 @@ test("Python and Node expose equivalent reconciliation outcomes", async (t) => {
     t.skip("start and seed both APIs to run conformance");
     return;
   }
-  const [pr, nr] = await Promise.all([
-    fetch(`${python}/api/runs`),
-    fetch(`${node}/api/runs`),
+  // Each backend independently materializes a run over the same current rows.
+  const pRunResponse = await fetch(`${python}/api/runs`, { method: "POST" });
+  const nRunResponse = await fetch(`${node}/api/runs`, { method: "POST" });
+  assert.equal(pRunResponse.status, 201);
+  assert.equal(nRunResponse.status, 201);
+  const [pRun, nRun] = await Promise.all([
+    pRunResponse.json(),
+    nRunResponse.json(),
   ]);
-  const [pRuns, nRuns] = await Promise.all([pr.json(), nr.json()]);
-  assert.ok(
-    pRuns[0] && nRuns[0],
-    "both backends must be seeded and reconciled",
-  );
   const [p, n] = await Promise.all([
-    fetch(`${python}/api/runs/${pRuns[0].id}/results`).then((r) => r.json()),
-    fetch(`${node}/api/runs/${nRuns[0].id}/results`).then((r) => r.json()),
+    fetch(`${python}/api/runs/${pRun.id}/results`).then((r) => r.json()),
+    fetch(`${node}/api/runs/${nRun.id}/results`).then((r) => r.json()),
   ]);
   assert.deepEqual(p.summary, n.summary);
   assert.deepEqual(p.items.map(normalize), n.items.map(normalize));
