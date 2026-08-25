@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { ApiClient } from "./api";
 import type {
+  Adapter,
   Audit,
   Health,
   Ingestion,
@@ -29,10 +30,11 @@ import type {
   Results,
   Run,
   Source,
+  UploadMode,
 } from "./types";
 
 const PYTHON_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const NODE_URL = "http://localhost:8001";
+const NODE_URL = import.meta.env.VITE_NODE_API_URL ?? "http://localhost:8001";
 const statuses = [
   "",
   "MATCHED",
@@ -86,6 +88,17 @@ export default function App() {
   const api = useMemo(() => new ApiClient(backend), [backend]);
   const [health, setHealth] = useState<Health | null>(null);
   const [files, setFiles] = useState<Ingestion[]>([]);
+  const [adapters, setAdapters] = useState<Record<Source, Adapter[]>>({
+    LEDGER: [],
+    COUNTERPARTY: [],
+  });
+  const [uploadModes, setUploadModes] = useState<Record<Source, UploadMode>>({
+    LEDGER: "INCREMENTAL",
+    COUNTERPARTY: "INCREMENTAL",
+  });
+  const [adapterOverrides, setAdapterOverrides] = useState<
+    Record<Source, string>
+  >({ LEDGER: "", COUNTERPARTY: "" });
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<number | null>(null);
   const [results, setResults] = useState<Results | null>(null);
@@ -101,18 +114,25 @@ export default function App() {
   );
   const load = useCallback(async () => {
     try {
-      const [h, f, r, a, s] = await Promise.all([
-        api.health(),
-        api.files(),
-        api.runs(),
-        api.audit(),
-        api.settings(),
-      ]);
+      const [h, f, r, a, s, ledgerAdapters, counterpartyAdapters] =
+        await Promise.all([
+          api.health(),
+          api.files(),
+          api.runs(),
+          api.audit(),
+          api.settings(),
+          api.adapters("LEDGER"),
+          api.adapters("COUNTERPARTY"),
+        ]);
       setHealth(h);
       setFiles(f);
       setRuns(r);
       setAudit(a);
       setSettings(s);
+      setAdapters({
+        LEDGER: ledgerAdapters,
+        COUNTERPARTY: counterpartyAdapters,
+      });
       setActiveRun((current) => current ?? r[0]?.id ?? null);
       setNotice(null);
     } catch (e: any) {
@@ -159,7 +179,8 @@ export default function App() {
     if (!file) return;
     await act(
       `upload-${source}`,
-      () => api.upload(source, file),
+      () =>
+        api.upload(source, file, uploadModes[source], adapterOverrides[source]),
       `${file.name} was validated and ingested.`,
     );
   };
@@ -278,6 +299,18 @@ export default function App() {
               latest={latest}
               upload={upload}
               busy={busy}
+              adapters={adapters}
+              uploadModes={uploadModes}
+              setUploadMode={(source, mode) =>
+                setUploadModes((current) => ({ ...current, [source]: mode }))
+              }
+              adapterOverrides={adapterOverrides}
+              setAdapterOverride={(source, adapter) =>
+                setAdapterOverrides((current) => ({
+                  ...current,
+                  [source]: adapter,
+                }))
+              }
               onOpenRun={(id) => {
                 setActiveRun(id);
                 setTab("results");
@@ -294,6 +327,13 @@ export default function App() {
               setSearch={setSearch}
               select={setSelected}
               backend={backend}
+              closeRun={() =>
+                act(
+                  "close-run",
+                  () => api.closeRun(currentRun!.id),
+                  "Run closed and made immutable.",
+                )
+              }
             />
           )}{" "}
           {tab === "activity" && <ActivityView audit={audit} />}{" "}
@@ -332,6 +372,13 @@ export default function App() {
               "The transaction was accepted as genuinely unmatched.",
             ).then(() => setSelected(null))
           }
+          acceptDifferences={(itemId, note) =>
+            act(
+              "resolve",
+              () => api.acceptDifferences(itemId, note),
+              "Material differences were reviewed and accepted.",
+            ).then(() => setSelected(null))
+          }
         />
       ) : null}
     </div>
@@ -344,6 +391,11 @@ function Overview({
   latest,
   upload,
   busy,
+  adapters,
+  uploadModes,
+  setUploadMode,
+  adapterOverrides,
+  setAdapterOverride,
   onOpenRun,
 }: {
   files: Ingestion[];
@@ -351,6 +403,11 @@ function Overview({
   latest: (s: Source) => Ingestion | undefined;
   upload: (s: Source, f?: File) => void;
   busy: string;
+  adapters: Record<Source, Adapter[]>;
+  uploadModes: Record<Source, UploadMode>;
+  setUploadMode: (source: Source, mode: UploadMode) => void;
+  adapterOverrides: Record<Source, string>;
+  setAdapterOverride: (source: Source, adapter: string) => void;
   onOpenRun: (id: number) => void;
 }) {
   return (
@@ -377,7 +434,7 @@ function Overview({
               <strong>#{String(runs[0].id).padStart(3, "0")}</strong>
               <span>
                 <span className="live-dot" />
-                Completed {when(runs[0].created_at)}
+                {label(runs[0].status)} · {when(runs[0].created_at)}
               </span>
             </>
           ) : (
@@ -422,7 +479,8 @@ function Overview({
                       <strong>{latest(source)!.filename}</strong>
                       <small>
                         {latest(source)!.row_count} rows ·{" "}
-                        {latest(source)!.changed_count} changed
+                        {latest(source)!.changed_count} changed ·{" "}
+                        {label(latest(source)!.mode)}
                       </small>
                     </span>
                   </div>
@@ -433,6 +491,38 @@ function Overview({
                   <span>No accepted file yet</span>
                 </div>
               )}
+              <div className="upload-options">
+                <label>
+                  Upload meaning
+                  <select
+                    value={uploadModes[source]}
+                    onChange={(event) =>
+                      setUploadMode(source, event.target.value as UploadMode)
+                    }
+                  >
+                    <option value="INCREMENTAL">
+                      Correction / incremental
+                    </option>
+                    <option value="SNAPSHOT">Complete snapshot</option>
+                  </select>
+                </label>
+                <label>
+                  File format
+                  <select
+                    value={adapterOverrides[source]}
+                    onChange={(event) =>
+                      setAdapterOverride(source, event.target.value)
+                    }
+                  >
+                    <option value="">Detect automatically</option>
+                    {adapters[source].map((adapter) => (
+                      <option key={adapter.id} value={adapter.id}>
+                        {adapter.description}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label className="upload-button">
                 <FileUp size={17} />
                 {busy === `upload-${source}` ? "Validating…" : "Choose CSV"}
@@ -494,6 +584,7 @@ function ResultsView({
   setSearch,
   select,
   backend,
+  closeRun,
 }: {
   run?: Run;
   results: Results | null;
@@ -503,6 +594,7 @@ function ResultsView({
   setSearch: (s: string) => void;
   select: (x: ResultItem) => void;
   backend: string;
+  closeRun: () => void;
 }) {
   if (!run)
     return (
@@ -525,13 +617,25 @@ function ResultsView({
           <h2>Exception workspace</h2>
           <p>
             Snapshot created {when(run.created_at)} · served by{" "}
-            {backend.includes("8001") ? "Node" : "Python"}
+            {backend === NODE_URL ? "Node" : "Python"}
           </p>
         </div>
-        <a className="secondary" href={`${backend}/api/runs/${run.id}/export`}>
-          <Download size={16} />
-          Export CSV
-        </a>
+        <div className="header-actions">
+          <StatusPill status={run.status} />
+          <a
+            className="secondary"
+            href={`${backend}/api/runs/${run.id}/export`}
+          >
+            <Download size={16} />
+            Export CSV
+          </a>
+          {run.status === "READY_TO_CLOSE" ? (
+            <button className="primary" onClick={closeRun}>
+              <ShieldCheck size={16} />
+              Close run
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="metric-grid">
         {cards.map((c) => (
@@ -575,6 +679,7 @@ function ResultsView({
           <thead>
             <tr>
               <th>Status</th>
+              <th>Review</th>
               <th>Ledger reference</th>
               <th>Counterparty</th>
               <th>Instrument</th>
@@ -597,6 +702,9 @@ function ResultsView({
                 >
                   <td>
                     <StatusPill status={item.status} />
+                  </td>
+                  <td>
+                    <StatusPill status={item.review_status} />
                   </td>
                   <td>
                     <strong>{item.ledger?.external_id ?? "—"}</strong>
@@ -646,12 +754,14 @@ function Detail({
   close,
   match,
   accept,
+  acceptDifferences,
 }: {
   item: ResultItem;
   all: ResultItem[];
   close: () => void;
   match: (l: number, c: number, n: string) => void;
   accept: (id: number, n: string) => void;
+  acceptDifferences: (itemId: number, note: string) => void;
 }) {
   const [candidate, setCandidate] = useState("");
   const [note, setNote] = useState("");
@@ -799,6 +909,29 @@ function Detail({
             </div>
           </div>
         )}
+        {item.status === "DIFFERENT" && item.review_status === "PENDING" ? (
+          <div className="resolution">
+            <h3>Acknowledge these differences</h3>
+            <p>
+              Record why the matched transactions are acceptable before this run
+              can be closed. The comparison itself remains unchanged.
+            </p>
+            <label>
+              Review note
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="How was the difference confirmed?"
+              />
+            </label>
+            <button
+              className="primary"
+              onClick={() => acceptDifferences(item.id, note)}
+            >
+              Accept differences
+            </button>
+          </div>
+        ) : null}
       </aside>
     </div>
   );

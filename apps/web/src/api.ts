@@ -1,4 +1,13 @@
-import type { Audit, Health, Ingestion, Results, Run, Source } from "./types";
+import type {
+  Adapter,
+  Audit,
+  Health,
+  Ingestion,
+  Results,
+  Run,
+  Source,
+  UploadMode,
+} from "./types";
 export class ApiClient {
   constructor(public baseUrl: string) {}
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -15,13 +24,21 @@ export class ApiClient {
   }
   health = () => this.request<Health>("/api/health");
   files = () => this.request<Ingestion[]>("/api/files");
-  upload = (source: Source, file: File) => {
+  adapters = (source: Source) =>
+    this.request<Adapter[]>(`/api/adapters?source=${source}`);
+  upload = (source: Source, file: File, mode: UploadMode, adapterId = "") => {
     const form = new FormData();
     form.append("file", file);
-    return this.request<Ingestion>(`/api/files?source=${source}`, {
-      method: "POST",
-      body: form,
-    });
+    const adapter = adapterId
+      ? `&adapter_id=${encodeURIComponent(adapterId)}`
+      : "";
+    return this.request<Ingestion>(
+      `/api/files?source=${source}&mode=${mode}${adapter}`,
+      {
+        method: "POST",
+        body: form,
+      },
+    );
   };
   runs = () => this.request<Run[]>("/api/runs");
   createRun = () => this.request<Run>("/api/runs", { method: "POST" });
@@ -49,6 +66,14 @@ export class ApiClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transaction_id, note }),
     });
+  acceptDifferences = (item_id: number, note: string) =>
+    this.request("/api/resolutions/accept-differences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_id, note }),
+    });
+  closeRun = (runId: number) =>
+    this.request<Run>(`/api/runs/${runId}/close`, { method: "POST" });
   audit = () => this.request<Audit[]>("/api/audit");
   settings = () =>
     this.request<Record<string, string | number>>("/api/settings");
