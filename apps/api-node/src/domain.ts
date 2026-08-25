@@ -199,16 +199,24 @@ export function reconcile(
       cs.length === 1 &&
       !usedL.has(ls[0].stableId) &&
       !usedC.has(cs[0].stableId) &&
+      !accepted.has(ls[0].stableId) &&
+      !accepted.has(cs[0].stableId) &&
       ls[0].state !== "CANCELLED" &&
       cs[0].state !== "CANCELLED"
     )
       paired(ls[0], cs[0], "EXACT_ID");
   }
   const rl = ledger.filter(
-      (t) => !usedL.has(t.stableId) && t.state !== "CANCELLED",
+      (t) =>
+        !usedL.has(t.stableId) &&
+        !accepted.has(t.stableId) &&
+        t.state !== "CANCELLED",
     ),
     rc = counterparty.filter(
-      (t) => !usedC.has(t.stableId) && t.state !== "CANCELLED",
+      (t) =>
+        !usedC.has(t.stableId) &&
+        !accepted.has(t.stableId) &&
+        t.state !== "CANCELLED",
     );
   const scores = new Map<string, Decimal>();
   for (const l of rl)

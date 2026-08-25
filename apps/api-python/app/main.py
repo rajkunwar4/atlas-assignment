@@ -9,11 +9,11 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Uploa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session
-from .db import Base, SessionLocal, engine, get_db
+from .db import SessionLocal, get_db
 from .domain import DEFAULT_SETTINGS, Transaction, reconcile
-from .ingestion import FileValidationError, parse_csv
+from .ingestion import FileValidationError, adapters_for, parse_csv, resolve_adapter
 from .models import (
     AuditEvent,
     FieldDifference,
@@ -29,15 +29,15 @@ from .models import (
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Initialize local defaults while keeping migrations available to reviewers."""
-    Base.metadata.create_all(engine)
+    """Refuse to run against an unmigrated schema, then seed harmless defaults."""
     with SessionLocal() as db:
+        version = db.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+        if version != "0001":
+            raise RuntimeError("database schema is not at Alembic revision 0001")
         if not db.scalar(select(ToleranceSetting).where(ToleranceSetting.active)):
-            db.add(
-                ToleranceSetting(
-                    settings_json=json.dumps(DEFAULT_SETTINGS), active=True
-                )
-            )
+            db.add(ToleranceSetting(settings_json=dict(DEFAULT_SETTINGS), active=True))
             db.commit()
     yield
 
@@ -45,7 +45,11 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Atlas Reconciliation API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -80,7 +84,7 @@ def audit(db, action, entity_type, entity_id, details=None):
             action=action,
             entity_type=entity_type,
             entity_id=str(entity_id),
-            details_json=json.dumps(details or {}),
+            details_json=details or {},
         )
     )
 
@@ -91,19 +95,21 @@ def active_settings(db):
         .where(ToleranceSetting.active)
         .order_by(ToleranceSetting.id.desc())
     )
-    return json.loads(row.settings_json) if row else dict(DEFAULT_SETTINGS)
+    return row.settings_json if row else dict(DEFAULT_SETTINGS)
 
 
 def load_transactions(db):
     rows = db.execute(
-        select(SourceTransaction, TransactionVersion).join(
+        select(SourceTransaction, TransactionVersion)
+        .join(
             TransactionVersion,
             SourceTransaction.current_version_id == TransactionVersion.id,
         )
+        .where(SourceTransaction.active)
     ).all()
     result = []
     for stable, version in rows:
-        data = json.loads(version.data_json)
+        data = version.data_json
         result.append(
             Transaction(
                 stable_id=stable.id,
@@ -117,33 +123,69 @@ def load_transactions(db):
                 price=Decimal(data["price"]),
                 gross_amount=Decimal(data["gross_amount"]),
                 state=data["state"],
-                raw=json.loads(version.raw_json),
+                raw=version.raw_json,
             )
         )
     return result
 
 
-def resolution_state(db):
+def resolution_state(db, transactions):
     rows = db.scalars(
         select(ManualResolution)
         .where(ManualResolution.active)
         .order_by(ManualResolution.id)
     ).all()
+    usable = {
+        transaction.stable_id
+        for transaction in transactions
+        if transaction.state != "CANCELLED"
+    }
+    for resolution in rows:
+        participants = {
+            value
+            for value in (
+                resolution.ledger_transaction_id,
+                resolution.counterparty_transaction_id,
+                resolution.accepted_transaction_id,
+            )
+            if value is not None
+        }
+        resolution.dormant = not participants.issubset(usable)
+        resolution.dormant_reason = (
+            "TRANSACTION_CANCELLED_OR_INACTIVE" if resolution.dormant else None
+        )
+    effective = [resolution for resolution in rows if not resolution.dormant]
     pairs = [
         (r.ledger_transaction_id, r.counterparty_transaction_id)
-        for r in rows
-        if r.resolution_type == "MATCH"
+        for r in effective
+        if r.resolution_type == "MANUAL_MATCH"
     ]
     accepted = {
         r.accepted_transaction_id
-        for r in rows
+        for r in effective
         if r.resolution_type == "ACCEPT_UNMATCHED"
     }
-    return pairs, accepted
+    accepted_differences = {
+        (r.ledger_transaction_id, r.counterparty_transaction_id)
+        for r in effective
+        if r.resolution_type == "ACCEPT_DIFFERENCES"
+    }
+    return pairs, accepted, accepted_differences
 
 
 def populate_run(db, run):
     """Rebuild one run from its snapshotted settings and the current stable identities."""
+    if run.status == "CLOSED":
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "RUN_CLOSED",
+                    "message": "closed runs are immutable",
+                    "details": [],
+                }
+            },
+        )
     db.execute(
         delete(FieldDifference).where(
             FieldDifference.item_id.in_(
@@ -153,13 +195,13 @@ def populate_run(db, run):
     )
     db.execute(delete(ReconciliationItem).where(ReconciliationItem.run_id == run.id))
     txs = load_transactions(db)
-    pairs, accepted = resolution_state(db)
+    pairs, accepted, accepted_differences = resolution_state(db, txs)
     results = reconcile(
         [t for t in txs if t.source == "LEDGER"],
         [t for t in txs if t.source == "COUNTERPARTY"],
         pairs,
         accepted,
-        json.loads(run.settings_json),
+        run.settings_json,
     )
     summary = {
         key: 0
@@ -173,8 +215,29 @@ def populate_run(db, run):
             "EXCLUDED_CANCELLED",
         ]
     }
+    unresolved = 0
     for result in results:
         summary[result["status"]] = summary.get(result["status"], 0) + 1
+        pair = (
+            (result.get("ledger") or {}).get("id"),
+            (result.get("counterparty") or {}).get("id"),
+        )
+        review_status, resolution_type = "NOT_REQUIRED", None
+        if result["status"] == "DIFFERENT":
+            if pair in accepted_differences:
+                review_status, resolution_type = "ACCEPTED", "ACCEPT_DIFFERENCES"
+            else:
+                review_status = "PENDING"
+        elif result["status"] in ("UNMATCHED_LEDGER", "UNMATCHED_COUNTERPARTY"):
+            review_status = "PENDING"
+        elif result["status"] == "ACCEPTED_UNMATCHED":
+            review_status, resolution_type = "ACCEPTED", "ACCEPT_UNMATCHED"
+        elif result["status"] == "MANUALLY_MATCHED":
+            review_status, resolution_type = "RESOLVED", "MANUAL_MATCH"
+        if review_status == "PENDING":
+            unresolved += 1
+        result["review_status"] = review_status
+        result["resolution_type"] = resolution_type
         item = ReconciliationItem(
             run_id=run.id,
             ledger_transaction_id=result["ledger"]["id"] if result["ledger"] else None,
@@ -184,7 +247,8 @@ def populate_run(db, run):
             status=result["status"],
             match_method=result["match_method"],
             score=result["score"],
-            result_json=json.dumps(result),
+            review_status=review_status,
+            result_json=result,
         )
         db.add(item)
         db.flush()
@@ -193,10 +257,12 @@ def populate_run(db, run):
                 FieldDifference(
                     item_id=item.id,
                     field=difference["field"],
-                    difference_json=json.dumps(difference),
+                    difference_json=difference,
                 )
             )
-    run.summary_json = json.dumps(summary)
+    summary["UNRESOLVED"] = unresolved
+    run.summary_json = summary
+    run.status = "READY_TO_CLOSE" if unresolved == 0 else "OPEN"
     db.flush()
     return results
 
@@ -206,12 +272,8 @@ def health():
     return {"status": "ok", "implementation": "python", "version": "1.0.0"}
 
 
-@app.post("/api/files", status_code=201)
-async def upload_file(
-    source: str = Query(...),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
+@app.get("/api/adapters")
+def list_adapters(source: str = Query(...)):
     source = source.upper()
     if source not in ("LEDGER", "COUNTERPARTY"):
         raise HTTPException(
@@ -220,6 +282,49 @@ async def upload_file(
                 "error": {
                     "code": "INVALID_SOURCE",
                     "message": "source must be LEDGER or COUNTERPARTY",
+                    "details": [],
+                }
+            },
+        )
+    return [
+        {
+            "id": adapter.id,
+            "source": adapter.source,
+            "description": adapter.description,
+            "headers": list(adapter.headers),
+        }
+        for adapter in adapters_for(source)
+    ]
+
+
+@app.post("/api/files", status_code=201)
+async def upload_file(
+    source: str = Query(...),
+    mode: str = Query("INCREMENTAL"),
+    adapter_id: str | None = Query(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    source = source.upper()
+    mode = mode.upper()
+    if source not in ("LEDGER", "COUNTERPARTY"):
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "INVALID_SOURCE",
+                    "message": "source must be LEDGER or COUNTERPARTY",
+                    "details": [],
+                }
+            },
+        )
+    if mode not in ("INCREMENTAL", "SNAPSHOT"):
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "INVALID_UPLOAD_MODE",
+                    "message": "mode must be INCREMENTAL or SNAPSHOT",
                     "details": [],
                 }
             },
@@ -237,9 +342,25 @@ async def upload_file(
             },
         )
     checksum = hashlib.sha256(content).hexdigest()
+    try:
+        adapter = resolve_adapter(content, source, adapter_id)
+    except FileValidationError as exc:
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "INVALID_FILE",
+                    "message": "file validation failed",
+                    "details": exc.errors,
+                }
+            },
+        )
     duplicate = db.scalar(
         select(IngestionFile).where(
-            IngestionFile.source == source, IngestionFile.checksum == checksum
+            IngestionFile.source == source,
+            IngestionFile.checksum == checksum,
+            IngestionFile.upload_mode == mode,
+            IngestionFile.adapter_id == adapter.id,
         )
     )
     if duplicate:
@@ -248,13 +369,29 @@ async def upload_file(
             "source": source,
             "filename": duplicate.filename,
             "checksum": checksum,
+            "mode": duplicate.upload_mode,
+            "adapter_id": duplicate.adapter_id,
             "row_count": duplicate.row_count,
             "changed_count": duplicate.changed_count,
             "duplicate": True,
             "created_at": iso(duplicate.created_at),
         }
+    open_run = db.scalar(
+        select(ReconciliationRun).where(ReconciliationRun.status != "CLOSED")
+    )
+    if open_run:
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "OPEN_RUN_EXISTS",
+                    "message": "close the current run before ingesting changed source data",
+                    "details": [],
+                }
+            },
+        )
     try:
-        rows = parse_csv(content, source)
+        rows = parse_csv(content, source, adapter.id)
     except FileValidationError as exc:
         raise HTTPException(
             422,
@@ -270,6 +407,8 @@ async def upload_file(
         source=source,
         filename=file.filename or "upload.csv",
         checksum=checksum,
+        upload_mode=mode,
+        adapter_id=adapter.id,
         row_count=len(rows),
         changed_count=0,
     )
@@ -295,7 +434,11 @@ async def upload_file(
             else None
         )
         # Unchanged rows do not create noisy versions; changed values remain immutable.
-        if current and current.fingerprint == fingerprint:
+        was_inactive = not stable.active
+        stable.active = True
+        stable.inactive_reason = None
+        stable.last_seen_file_id = ingestion.id
+        if current and current.fingerprint == fingerprint and not was_inactive:
             continue
         version_number = (
             db.scalar(
@@ -310,20 +453,41 @@ async def upload_file(
             ingestion_file_id=ingestion.id,
             version=version_number,
             fingerprint=fingerprint,
-            data_json=json.dumps(data),
-            raw_json=json.dumps(raw),
+            data_json=data,
+            raw_json=raw,
         )
         db.add(version)
         db.flush()
         stable.current_version_id = version.id
         changed += 1
+    if mode == "SNAPSHOT":
+        omitted = db.scalars(
+            select(SourceTransaction).where(
+                SourceTransaction.source == source,
+                SourceTransaction.active,
+                or_(
+                    SourceTransaction.last_seen_file_id.is_(None),
+                    SourceTransaction.last_seen_file_id != ingestion.id,
+                ),
+            )
+        ).all()
+        for stable in omitted:
+            stable.active = False
+            stable.inactive_reason = "ABSENT_FROM_SNAPSHOT"
+        changed += len(omitted)
     ingestion.changed_count = changed
     audit(
         db,
         "FILE_INGESTED",
         "ingestion_file",
         ingestion.id,
-        {"source": source, "rows": len(rows), "changed": changed},
+        {
+            "source": source,
+            "mode": mode,
+            "adapter_id": adapter.id,
+            "rows": len(rows),
+            "changed": changed,
+        },
     )
     db.commit()
     return {
@@ -331,6 +495,8 @@ async def upload_file(
         "source": source,
         "filename": ingestion.filename,
         "checksum": checksum,
+        "mode": mode,
+        "adapter_id": adapter.id,
         "row_count": len(rows),
         "changed_count": changed,
         "duplicate": False,
@@ -346,6 +512,8 @@ def files(db: Session = Depends(get_db)):
             "source": x.source,
             "filename": x.filename,
             "checksum": x.checksum,
+            "mode": x.upload_mode,
+            "adapter_id": x.adapter_id,
             "row_count": x.row_count,
             "changed_count": x.changed_count,
             "created_at": iso(x.created_at),
@@ -358,7 +526,11 @@ def files(db: Session = Depends(get_db)):
 
 @app.post("/api/runs", status_code=201)
 def create_run(db: Session = Depends(get_db)):
-    sources = set(db.scalars(select(SourceTransaction.source)).all())
+    sources = set(
+        db.scalars(
+            select(SourceTransaction.source).where(SourceTransaction.active)
+        ).all()
+    )
     if sources != {"LEDGER", "COUNTERPARTY"}:
         raise HTTPException(
             409,
@@ -370,19 +542,19 @@ def create_run(db: Session = Depends(get_db)):
                 }
             },
         )
-    run = ReconciliationRun(settings_json=json.dumps(active_settings(db)))
+    run = ReconciliationRun(settings_json=active_settings(db))
     db.add(run)
     db.flush()
     populate_run(db, run)
-    audit(
-        db, "RUN_COMPLETED", "reconciliation_run", run.id, json.loads(run.summary_json)
-    )
+    audit(db, "RUN_CREATED", "reconciliation_run", run.id, run.summary_json)
     db.commit()
     return {
         "id": run.id,
         "status": run.status,
-        "summary": json.loads(run.summary_json),
+        "summary": run.summary_json,
         "created_at": iso(run.created_at),
+        "closed_at": iso(run.closed_at) if run.closed_at else None,
+        "closed_by": run.closed_by,
     }
 
 
@@ -392,8 +564,10 @@ def list_runs(db: Session = Depends(get_db)):
         {
             "id": r.id,
             "status": r.status,
-            "summary": json.loads(r.summary_json),
+            "summary": r.summary_json,
             "created_at": iso(r.created_at),
+            "closed_at": iso(r.closed_at) if r.closed_at else None,
+            "closed_by": r.closed_by,
         }
         for r in db.scalars(
             select(ReconciliationRun).order_by(ReconciliationRun.id.desc())
@@ -424,7 +598,7 @@ def list_results(
     rows = db.scalars(query).all()
     items = []
     for row in rows:
-        data = json.loads(row.result_json)
+        data = dict(row.result_json)
         data["id"] = row.id
         if status and data["status"] != status:
             continue
@@ -437,7 +611,7 @@ def list_results(
         "total": len(items),
         "page": page,
         "page_size": page_size,
-        "summary": json.loads(run.summary_json),
+        "summary": run.summary_json,
     }
 
 
@@ -449,6 +623,15 @@ class MatchBody(BaseModel):
 
 class AcceptBody(BaseModel):
     transaction_id: int
+    note: str = ""
+
+
+class AcceptDifferencesBody(BaseModel):
+    item_id: int
+    note: str = ""
+
+
+class NoteBody(BaseModel):
     note: str = ""
 
 
@@ -479,13 +662,38 @@ def ensure_unresolved(db, ids):
 
 
 def refresh_latest(db):
-    run = db.scalar(select(ReconciliationRun).order_by(ReconciliationRun.id.desc()))
+    run = db.scalar(
+        select(ReconciliationRun)
+        .where(ReconciliationRun.status != "CLOSED")
+        .order_by(ReconciliationRun.id.desc())
+    )
     if run:
         populate_run(db, run)
 
 
+def require_open_run(db):
+    run = db.scalar(
+        select(ReconciliationRun)
+        .where(ReconciliationRun.status != "CLOSED")
+        .order_by(ReconciliationRun.id.desc())
+    )
+    if not run:
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "NO_OPEN_RUN",
+                    "message": "create a reconciliation run before recording decisions",
+                    "details": [],
+                }
+            },
+        )
+    return run
+
+
 @app.post("/api/resolutions/match", status_code=201)
 def manual_match(body: MatchBody, db: Session = Depends(get_db)):
+    require_open_run(db)
     left, right = (
         db.get(SourceTransaction, body.ledger_transaction_id),
         db.get(SourceTransaction, body.counterparty_transaction_id),
@@ -508,7 +716,7 @@ def manual_match(body: MatchBody, db: Session = Depends(get_db)):
         )
     ensure_unresolved(db, {left.id, right.id})
     resolution = ManualResolution(
-        resolution_type="MATCH",
+        resolution_type="MANUAL_MATCH",
         ledger_transaction_id=left.id,
         counterparty_transaction_id=right.id,
         note=body.note,
@@ -526,7 +734,7 @@ def manual_match(body: MatchBody, db: Session = Depends(get_db)):
     db.commit()
     return {
         "id": resolution.id,
-        "type": "MATCH",
+        "type": "MANUAL_MATCH",
         "active": True,
         "created_at": iso(resolution.created_at),
     }
@@ -534,6 +742,7 @@ def manual_match(body: MatchBody, db: Session = Depends(get_db)):
 
 @app.post("/api/resolutions/accept-unmatched", status_code=201)
 def accept_unmatched(body: AcceptBody, db: Session = Depends(get_db)):
+    require_open_run(db)
     tx = db.get(SourceTransaction, body.transaction_id)
     if not tx:
         raise HTTPException(
@@ -571,6 +780,165 @@ def accept_unmatched(body: AcceptBody, db: Session = Depends(get_db)):
     }
 
 
+@app.post("/api/resolutions/accept-differences", status_code=201)
+def accept_differences(body: AcceptDifferencesBody, db: Session = Depends(get_db)):
+    item = db.get(ReconciliationItem, body.item_id)
+    run = db.get(ReconciliationRun, item.run_id) if item else None
+    if not item or not run:
+        raise HTTPException(
+            404,
+            {
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": "item not found",
+                    "details": [],
+                }
+            },
+        )
+    if run.status == "CLOSED":
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "RUN_CLOSED",
+                    "message": "closed runs are immutable",
+                    "details": [],
+                }
+            },
+        )
+    if (
+        item.status != "DIFFERENT"
+        or item.ledger_transaction_id is None
+        or item.counterparty_transaction_id is None
+    ):
+        raise HTTPException(
+            422,
+            {
+                "error": {
+                    "code": "INVALID_REVIEW_ITEM",
+                    "message": "only a matched item with material differences can be accepted",
+                    "details": [],
+                }
+            },
+        )
+    ensure_unresolved(
+        db, {item.ledger_transaction_id, item.counterparty_transaction_id}
+    )
+    resolution = ManualResolution(
+        resolution_type="ACCEPT_DIFFERENCES",
+        ledger_transaction_id=item.ledger_transaction_id,
+        counterparty_transaction_id=item.counterparty_transaction_id,
+        note=body.note,
+    )
+    db.add(resolution)
+    db.flush()
+    audit(
+        db,
+        "DIFFERENCES_ACCEPTED",
+        "manual_resolution",
+        resolution.id,
+        {"item": item.id, "note": body.note},
+    )
+    populate_run(db, run)
+    db.commit()
+    return {
+        "id": resolution.id,
+        "type": "ACCEPT_DIFFERENCES",
+        "active": True,
+        "created_at": iso(resolution.created_at),
+    }
+
+
+@app.post("/api/runs/{run_id}/close")
+def close_run(run_id: int, db: Session = Depends(get_db)):
+    run = db.get(ReconciliationRun, run_id)
+    if not run:
+        raise HTTPException(
+            404,
+            {"error": {"code": "NOT_FOUND", "message": "run not found", "details": []}},
+        )
+    if run.status == "CLOSED":
+        return {
+            "id": run.id,
+            "status": run.status,
+            "summary": run.summary_json,
+            "created_at": iso(run.created_at),
+            "closed_at": iso(run.closed_at),
+            "closed_by": run.closed_by,
+        }
+    if run.status != "READY_TO_CLOSE":
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "UNRESOLVED_EXCEPTIONS",
+                    "message": "resolve every exception before closing the run",
+                    "details": [],
+                }
+            },
+        )
+    run.status = "CLOSED"
+    run.closed_at = datetime.now(timezone.utc)
+    run.closed_by = "demo.operator"
+    audit(db, "RUN_CLOSED", "reconciliation_run", run.id, run.summary_json)
+    db.commit()
+    return {
+        "id": run.id,
+        "status": run.status,
+        "summary": run.summary_json,
+        "created_at": iso(run.created_at),
+        "closed_at": iso(run.closed_at),
+        "closed_by": run.closed_by,
+    }
+
+
+@app.post("/api/resolutions/{resolution_id}/supersede", status_code=201)
+def supersede_resolution(
+    resolution_id: int, body: NoteBody, db: Session = Depends(get_db)
+):
+    require_open_run(db)
+    previous = db.get(ManualResolution, resolution_id)
+    if not previous or not previous.active:
+        raise HTTPException(
+            404,
+            {
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": "active resolution not found",
+                    "details": [],
+                }
+            },
+        )
+    previous.active = False
+    replacement = ManualResolution(
+        resolution_type="SUPERSEDE",
+        ledger_transaction_id=previous.ledger_transaction_id,
+        counterparty_transaction_id=previous.counterparty_transaction_id,
+        accepted_transaction_id=previous.accepted_transaction_id,
+        note=body.note,
+        active=False,
+        supersedes_id=previous.id,
+    )
+    db.add(replacement)
+    db.flush()
+    audit(
+        db,
+        "RESOLUTION_SUPERSEDED",
+        "manual_resolution",
+        replacement.id,
+        {"previous_resolution_id": previous.id, "note": body.note},
+    )
+    refresh_latest(db)
+    db.commit()
+    return {
+        "id": replacement.id,
+        "type": "SUPERSEDE",
+        "active": False,
+        "supersedes_id": previous.id,
+        "created_at": iso(replacement.created_at),
+    }
+
+
 @app.get("/api/settings")
 def get_settings(db: Session = Depends(get_db)):
     return active_settings(db)
@@ -593,7 +961,7 @@ def update_settings(body: dict, db: Session = Depends(get_db)):
     current = db.scalars(select(ToleranceSetting).where(ToleranceSetting.active)).all()
     for row in current:
         row.active = False
-    row = ToleranceSetting(settings_json=json.dumps(body), active=True)
+    row = ToleranceSetting(settings_json=body, active=True)
     db.add(row)
     db.flush()
     audit(db, "SETTINGS_UPDATED", "tolerance_setting", row.id, body)
@@ -610,7 +978,7 @@ def get_audit(db: Session = Depends(get_db)):
             "entity_type": e.entity_type,
             "entity_id": e.entity_id,
             "actor": e.actor,
-            "details": json.loads(e.details_json),
+            "details": e.details_json,
             "created_at": iso(e.created_at),
         }
         for e in db.scalars(
@@ -643,8 +1011,8 @@ def transaction_history(transaction_id: int, db: Session = Depends(get_db)):
             "id": v.id,
             "version": v.version,
             "current": v.id == stable.current_version_id,
-            "data": json.loads(v.data_json),
-            "raw": json.loads(v.raw_json),
+            "data": v.data_json,
+            "raw": v.raw_json,
             "created_at": iso(v.created_at),
         }
         for v in versions
@@ -675,7 +1043,7 @@ def export_run(run_id: int, db: Session = Depends(get_db)):
         ]
     )
     for row in rows:
-        data = json.loads(row.result_json)
+        data = row.result_json
         writer.writerow(
             [
                 data["status"],

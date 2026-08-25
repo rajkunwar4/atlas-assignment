@@ -235,15 +235,25 @@ def reconcile(
             len(ls) == len(cs) == 1
             and ls[0].stable_id not in used_l
             and cs[0].stable_id not in used_c
+            and ls[0].stable_id not in accepted
+            and cs[0].stable_id not in accepted
             and ls[0].state != "CANCELLED"
             and cs[0].state != "CANCELLED"
         ):
             add_pair(ls[0], cs[0], "EXACT_ID")
     remaining_l = [
-        t for t in ledger if t.stable_id not in used_l and t.state != "CANCELLED"
+        t
+        for t in ledger
+        if t.stable_id not in used_l
+        and t.stable_id not in accepted
+        and t.state != "CANCELLED"
     ]
     remaining_c = [
-        t for t in counterparty if t.stable_id not in used_c and t.state != "CANCELLED"
+        t
+        for t in counterparty
+        if t.stable_id not in used_c
+        and t.stable_id not in accepted
+        and t.state != "CANCELLED"
     ]
     scores = {
         (left.stable_id, right.stable_id): candidate_score(left, right, settings)

@@ -1,13 +1,20 @@
+import os
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 from app.db import Base
 from app import models  # noqa: F401
+from app.db import sqlalchemy_url
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata
+
+# Runtime traffic may use Neon's pooler; migrations need its direct endpoint.
+configured_url = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL")
+if configured_url:
+    config.set_main_option("sqlalchemy.url", sqlalchemy_url(configured_url))
 
 
 def run_migrations_offline():

@@ -27,6 +27,12 @@ paths:
           name: source
           required: true
           schema: { $ref: '#/components/schemas/Source' }
+        - in: query
+          name: mode
+          schema: { $ref: '#/components/schemas/UploadMode', default: INCREMENTAL }
+        - in: query
+          name: adapter_id
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -40,6 +46,16 @@ paths:
         '201': { description: File accepted }
         '200': { description: Duplicate file }
         '422': { description: Validation error }
+  /api/adapters:
+    get:
+      operationId: listAdapters
+      parameters:
+        - in: query
+          name: source
+          required: true
+          schema: { $ref: '#/components/schemas/Source' }
+      responses:
+        '200': { description: Registered adapters compatible with the source }
   /api/runs:
     get:
       operationId: listRuns
@@ -67,6 +83,14 @@ paths:
         - { in: path, name: runId, required: true, schema: { type: integer } }
       responses:
         '200': { description: CSV export }
+  /api/runs/{runId}/close:
+    post:
+      operationId: closeRun
+      parameters:
+        - { in: path, name: runId, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Run signed off and made immutable }
+        '409': { description: Run still contains unresolved exceptions }
   /api/resolutions/match:
     post:
       operationId: createManualMatch
@@ -77,6 +101,18 @@ paths:
       operationId: acceptUnmatched
       responses:
         '201': { description: Resolution applied }
+  /api/resolutions/accept-differences:
+    post:
+      operationId: acceptDifferences
+      responses:
+        '201': { description: Material differences acknowledged }
+  /api/resolutions/{resolutionId}/supersede:
+    post:
+      operationId: supersedeResolution
+      parameters:
+        - { in: path, name: resolutionId, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: Prior decision retained but made inactive }
   /api/settings:
     get:
       operationId: getSettings
@@ -104,6 +140,15 @@ components:
     Source:
       type: string
       enum: [LEDGER, COUNTERPARTY]
+    UploadMode:
+      type: string
+      enum: [INCREMENTAL, SNAPSHOT]
+    RunStatus:
+      type: string
+      enum: [OPEN, READY_TO_CLOSE, CLOSED]
+    ReviewStatus:
+      type: string
+      enum: [NOT_REQUIRED, PENDING, ACCEPTED, RESOLVED]
     Health:
       type: object
       required: [status, implementation, version]

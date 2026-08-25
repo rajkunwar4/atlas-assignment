@@ -58,3 +58,17 @@ test("manual pair remains explicit", () =>
       .status,
     "MANUALLY_MATCHED",
   ));
+test("accepted-unmatched decisions prevent future automatic pairing", () => {
+  const statuses = new Set(
+    reconcile(
+      [tx(1, "LEDGER", "A")],
+      [tx(2, "COUNTERPARTY", "A")],
+      [],
+      new Set([1]),
+    ).map((item) => item.status),
+  );
+  assert.deepEqual(
+    statuses,
+    new Set(["ACCEPTED_UNMATCHED", "UNMATCHED_COUNTERPARTY"]),
+  );
+});

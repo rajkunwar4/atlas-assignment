@@ -2,13 +2,21 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///apps/api-python/reconciliation.db")
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-    if DATABASE_URL.startswith("sqlite")
-    else {},
+
+def sqlalchemy_url(value: str) -> str:
+    """Use psycopg 3 while accepting standard URLs from Neon and Knex."""
+    if value.startswith("postgres://"):
+        value = "postgresql://" + value.removeprefix("postgres://")
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+    raise RuntimeError("DATABASE_URL must be a PostgreSQL connection URL")
+
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://atlas:atlas@localhost:55432/atlas?sslmode=disable",
 )
+engine = create_engine(sqlalchemy_url(DATABASE_URL), pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 

@@ -1,5 +1,4 @@
 import knex, { type Knex } from "knex";
-import { fileURLToPath } from "node:url";
 
 export type { Knex } from "knex";
 
@@ -14,28 +13,32 @@ export const DEFAULT_SETTINGS = {
   candidate_min_score: "0.75",
 };
 
-export const databasePath =
-  process.env.DATABASE_PATH ??
-  fileURLToPath(new URL("../reconciliation.db", import.meta.url));
+export const databaseUrl =
+  process.env.DATABASE_URL ??
+  "postgresql://atlas:atlas@localhost:55432/atlas?sslmode=disable";
 
 export const db: Knex = knex({
-  client: "better-sqlite3",
-  connection: { filename: databasePath },
-  useNullAsDefault: true,
+  client: "pg",
+  connection: databaseUrl,
+  pool: { min: 0, max: 5 },
 });
 
-export async function migrate(database: Knex = db) {
-  const directory = fileURLToPath(new URL("../migrations", import.meta.url));
-  await database.migrate.latest({ directory, extension: "ts" });
-
+export async function ensureSchema(database: Knex = db) {
+  const revision = await database("alembic_version")
+    .select("version_num")
+    .first();
+  if (revision?.version_num !== "0001") {
+    throw new Error(
+      "database schema is not at Alembic revision 0001; run npm run migrate",
+    );
+  }
   const activeSettings = await database("tolerance_settings")
-    .where({ active: 1 })
+    .where({ active: true })
     .first();
   if (!activeSettings) {
     await database("tolerance_settings").insert({
-      settings_json: JSON.stringify(DEFAULT_SETTINGS),
-      active: 1,
+      settings_json: DEFAULT_SETTINGS,
+      active: true,
     });
   }
-  await database.raw("PRAGMA optimize");
 }

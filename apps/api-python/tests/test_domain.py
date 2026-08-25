@@ -53,3 +53,16 @@ def test_manual_pair_has_manual_status():
         [tx(1)], [tx(2, "COUNTERPARTY", external="X", minutes=30)], [(1, 2)], set()
     )
     assert items[0]["status"] == "MANUALLY_MATCHED"
+
+
+def test_accepted_unmatched_decision_prevents_future_automatic_pairing():
+    items = reconcile(
+        [tx(1, external="A")],
+        [tx(2, "COUNTERPARTY", external="A")],
+        [],
+        {1},
+    )
+    assert {item["status"] for item in items} == {
+        "ACCEPTED_UNMATCHED",
+        "UNMATCHED_COUNTERPARTY",
+    }
