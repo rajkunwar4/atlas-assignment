@@ -196,6 +196,7 @@ export default function App() {
     );
   const latest = (source: Source) => files.find((f) => f.source === source);
   const currentRun = runs.find((r) => r.id === activeRun) ?? runs[0];
+  const hasOpenRun = runs.some((r) => r.status !== "CLOSED");
   const nav = [
     { id: "overview", icon: LayoutDashboard, text: "Overview" },
     { id: "results", icon: SlidersHorizontal, text: "Reconciliation" },
@@ -299,6 +300,7 @@ export default function App() {
               latest={latest}
               upload={upload}
               busy={busy}
+              hasOpenRun={hasOpenRun}
               adapters={adapters}
               uploadModes={uploadModes}
               setUploadMode={(source, mode) =>
@@ -391,6 +393,7 @@ function Overview({
   latest,
   upload,
   busy,
+  hasOpenRun,
   adapters,
   uploadModes,
   setUploadMode,
@@ -403,6 +406,7 @@ function Overview({
   latest: (s: Source) => Ingestion | undefined;
   upload: (s: Source, f?: File) => void;
   busy: string;
+  hasOpenRun: boolean;
   adapters: Record<Source, Adapter[]>;
   uploadModes: Record<Source, UploadMode>;
   setUploadMode: (source: Source, mode: UploadMode) => void;
@@ -523,16 +527,23 @@ function Overview({
                   </select>
                 </label>
               </div>
-              <label className="upload-button">
+              <label
+                className={`upload-button${hasOpenRun ? " disabled" : ""}`}
+              >
                 <FileUp size={17} />
                 {busy === `upload-${source}` ? "Validating…" : "Choose CSV"}
                 <input
                   type="file"
                   accept=".csv,text/csv"
-                  disabled={busy !== ""}
+                  disabled={busy !== "" || hasOpenRun}
                   onChange={(e) => upload(source, e.target.files?.[0])}
                 />
               </label>
+              {hasOpenRun ? (
+                <p className="hint">
+                  Close the current run before uploading new files.
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

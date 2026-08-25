@@ -507,6 +507,14 @@ header h1 {
   border-color: #527162;
   background: #f3f7f1;
 }
+.upload-button.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.upload-button.disabled:hover {
+  border-color: #aeb3ac;
+  background: none;
+}
 .upload-button input {
   display: none;
 }
