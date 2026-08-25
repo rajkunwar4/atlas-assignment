@@ -165,7 +165,8 @@ export function reconcile(
             ? "MATCHED"
             : "DIFFERENT",
       match_method: method,
-      score: score?.toDecimalPlaces(4).toString() ?? null,
+      // Four fixed decimals keep the score string identical to the Python service.
+      score: score?.toFixed(4) ?? null,
       ledger: publicTx(l),
       counterparty: publicTx(c),
       differences,

@@ -9,10 +9,22 @@ const fixtureDir = fileURLToPath(
 );
 const app = await buildApp(db);
 
-for (const [source, filename] of [
-  ["LEDGER", "ledger.csv"],
-  ["COUNTERPARTY", "counterparty.csv"],
-]) {
+// Pass "wide" to load the extended fixture week instead of the brief's example data.
+const datasets: Record<string, [string, string][]> = {
+  demo: [
+    ["LEDGER", "ledger.csv"],
+    ["COUNTERPARTY", "counterparty.csv"],
+  ],
+  wide: [
+    ["LEDGER", "ledger-wide.csv"],
+    ["COUNTERPARTY", "counterparty-wide.csv"],
+  ],
+};
+const dataset = process.argv[2] ?? "demo";
+if (!datasets[dataset])
+  throw new Error(`unknown dataset ${dataset}; choose demo or wide`);
+
+for (const [source, filename] of datasets[dataset]) {
   const boundary = `atlas-seed-${source}`;
   const content = await readFile(resolve(fixtureDir, filename));
   const payload = Buffer.concat([

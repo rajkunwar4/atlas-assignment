@@ -71,6 +71,24 @@ Open `http://localhost:5173`. The development backend switcher can move between 
 
 The seed commands perform the first two uploads automatically.
 
+## Extended data set
+
+`shared/fixtures/ledger-wide.csv` and `shared/fixtures/counterparty-wide.csv` hold a full
+trading week that exercises every outcome the system can produce: tolerance-sized rounding
+and clock differences, material breaks on each field, both directions of unmatched rows,
+cancellations on one side and on both, similarity matches with no shared reference, a
+refused ambiguous tie, partial fills the system deliberately does not aggregate, and rows
+sitting immediately on either side of each tolerance and scoring threshold. Two correction
+files restate a few amounts, two reformatted files restate none, and `shared/fixtures/invalid`
+holds twelve files that must be rejected whole.
+
+Load it with `npm run seed:python -- wide` or `npm run seed:node -- wide` after a reset, or
+upload the two files through the screen.
+
+Every expected outcome is recorded in `shared/expected-results/wide.json` and
+`shared/expected-results/invalid-files.json`, and both backends are tested against them.
+[shared/fixtures/README.md](shared/fixtures/README.md) catalogues each row and what it covers.
+
 ## Tests and verification
 
 ```bash

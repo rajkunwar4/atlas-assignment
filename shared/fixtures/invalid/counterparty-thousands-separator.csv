@@ -1,0 +1,3 @@
+reference,executed_at,symbol,direction,qty,unit_price,total,status
+T-3001,2025-08-04 09:00:00,BTC-USD,B,0.5,61500,30750.00,SETTLED
+T-3012,2025-08-04 09:30:00,XRP-USD,B,5000,3.05,"15,250.00",SETTLED

@@ -115,7 +115,7 @@ Domain functions remain database-independent and use domain names rather than pe
 
 ## Testing strategy
 
-Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or SQLite. Integration tests cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, and auditing. The conformance runner seeds both services with the same fixtures and compares normalized API outcomes. The React workflow is designed to run unchanged against either API.
+Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or SQLite. Integration tests cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, and auditing. Both services are also held to one shared expectations file over the extended fixture week, which pins every tolerance boundary, scoring threshold, ambiguity refusal and rejected file. The conformance runner seeds both services with the same fixtures and compares normalized API outcomes. The React workflow is designed to run unchanged against either API.
 
 ## Security and production readiness
 

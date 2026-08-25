@@ -1,0 +1,84 @@
+{
+  "description": "Files every backend must reject atomically. Row numbers are 1-based and include the header row. `contains` lists substrings that must appear in the reported reason, chosen so that both implementations satisfy them; where the two backends word a reason differently, only the row is asserted.",
+  "files": [
+    {
+      "path": "invalid/ledger-bad-header.csv",
+      "source": "LEDGER",
+      "case": "a column is renamed, so no row can be trusted",
+      "errors": [{ "row": 1, "contains": ["expected trade_id"] }]
+    },
+    {
+      "path": "invalid/counterparty-bad-header-order.csv",
+      "source": "COUNTERPARTY",
+      "case": "the columns are reordered, which the contract does not allow",
+      "errors": [{ "row": 1, "contains": ["expected reference"] }]
+    },
+    {
+      "path": "invalid/ledger-header-only.csv",
+      "source": "LEDGER",
+      "case": "a header with no data rows is an operator mistake, not an empty day",
+      "errors": [{ "row": 0, "contains": ["no data rows"] }]
+    },
+    {
+      "path": "invalid/ledger-missing-timezone.csv",
+      "source": "LEDGER",
+      "case": "a ledger timestamp without a timezone cannot be compared to another clock",
+      "errors": [{ "row": 3, "contains": ["timezone"] }]
+    },
+    {
+      "path": "invalid/ledger-negative-amount.csv",
+      "source": "LEDGER",
+      "case": "a negative gross amount is a sign convention the contract rejects",
+      "errors": [{ "row": 3, "contains": ["gross_amount", "decimal"] }]
+    },
+    {
+      "path": "invalid/ledger-invalid-state.csv",
+      "source": "LEDGER",
+      "case": "an unknown state such as PENDING must not be silently treated as settled",
+      "errors": [{ "row": 3, "contains": ["state"] }]
+    },
+    {
+      "path": "invalid/ledger-truncated-row.csv",
+      "source": "LEDGER",
+      "case": "a row cut short by a broken export is reported, never partially imported",
+      "errors": [{ "row": 3, "contains": ["state"] }]
+    },
+    {
+      "path": "invalid/ledger-conflicting-duplicate.csv",
+      "source": "LEDGER",
+      "case": "the same trade ID appears twice with different amounts",
+      "errors": [{ "row": 3, "contains": ["conflicting duplicate"] }]
+    },
+    {
+      "path": "invalid/ledger-multiple-errors.csv",
+      "source": "LEDGER",
+      "case": "every defect in the file is reported at once and nothing is imported",
+      "errors": [
+        { "row": 3, "contains": ["transaction ID is required"] },
+        { "row": 4, "contains": ["side"] },
+        { "row": 5, "contains": [] },
+        { "row": 6, "contains": ["quantity", "decimal"] },
+        { "row": 7, "contains": ["instrument is required"] }
+      ]
+    },
+    {
+      "path": "invalid/counterparty-invalid-direction.csv",
+      "source": "COUNTERPARTY",
+      "case": "a direction outside B/S/BUY/SELL cannot be guessed",
+      "errors": [{ "row": 3, "contains": ["side"] }]
+    },
+    {
+      "path": "invalid/counterparty-thousands-separator.csv",
+      "source": "COUNTERPARTY",
+      "case": "a spreadsheet exported a grouped number such as 15,250.00",
+      "errors": [{ "row": 3, "contains": ["total", "decimal"] }]
+    },
+    {
+      "path": "invalid/counterparty-not-utf8.csv",
+      "source": "COUNTERPARTY",
+      "case": "the file carries a byte that is not valid UTF-8",
+      "note": "Python rejects the file at decode time; Node substitutes the byte and rejects the row that contains it. Both refuse the file, so only rejection is asserted here.",
+      "errors": []
+    }
+  ]
+}

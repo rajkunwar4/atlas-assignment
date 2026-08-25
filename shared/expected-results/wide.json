@@ -1,0 +1,740 @@
+{
+  "description": "Expected reconciliation outcome for the extended fixture set, with no manual resolutions applied. Both backends are tested against this file.",
+  "base": {
+    "ledger_file": "ledger-wide.csv",
+    "counterparty_file": "counterparty-wide.csv",
+    "summary": {
+      "MATCHED": 20,
+      "DIFFERENT": 11,
+      "UNMATCHED_LEDGER": 7,
+      "UNMATCHED_COUNTERPARTY": 8,
+      "MANUALLY_MATCHED": 0,
+      "ACCEPTED_UNMATCHED": 0,
+      "EXCLUDED_CANCELLED": 5
+    },
+    "items": {
+      "|C-9101": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only cancelled row"
+      },
+      "|C-9102": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only trade with no ledger row"
+      },
+      "|C-9103": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only adjustment row"
+      },
+      "|C-9106": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "one half of the refused ambiguous tie"
+      },
+      "|C-9107": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the other half of the refused ambiguous tie"
+      },
+      "|C-9108": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the counterparty half of the manual-match pair"
+      },
+      "|C-9109": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the counterparty half of the below-threshold pair"
+      },
+      "|C-9111": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "first partial fill, never aggregated automatically"
+      },
+      "|C-9112": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "second partial fill, never aggregated automatically"
+      },
+      "T-2001|T-2001": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical rows on both sides"
+      },
+      "T-2002|T-2002": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty timestamp carries a +02:00 offset for the same instant"
+      },
+      "T-2003|T-2003": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "90-second clock skew, inside the 120-second time tolerance"
+      },
+      "T-2004|T-2004": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "one-cent rounding difference, inside the absolute money tolerance"
+      },
+      "T-2005|T-2005": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "large notional 0.9 basis points apart, inside the relative money tolerance"
+      },
+      "T-2006|T-2006": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "same values written with a different decimal scale"
+      },
+      "T-2007|T-2007": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "lower-case instrument and side in both files"
+      },
+      "T-2008|T-2008": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty row padded with surrounding whitespace"
+      },
+      "T-2009|t-2009": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty reference differs only by letter case"
+      },
+      "T-2010|T-2010": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "sub-second timestamps 250 ms apart"
+      },
+      "T-2011|T-2011": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "exactly 120 seconds apart, the inclusive edge of the time tolerance"
+      },
+      "T-2012|T-2012": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "gross 9.7 basis points apart, just inside the relative money tolerance"
+      },
+      "T-2013|T-2013": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "quantity 0.00000001 apart, the inclusive edge of the quantity tolerance"
+      },
+      "T-2014|T-2014": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "zero price and zero gross, guarding relative comparison against divide-by-zero"
+      },
+      "T-2015|T-2015": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "row repeated identically in the ledger file and deduplicated on ingest"
+      },
+      "T-2016|T-2016": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "eight-decimal crypto quantity preserved exactly"
+      },
+      "T-2017|T-2017": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty row written with every field quoted"
+      },
+      "T-2018|T-2018": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["price", "gross_amount"],
+        "case": "counterparty applied a fee, so price and gross differ materially"
+      },
+      "T-2019|T-2019": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at"],
+        "case": "same trade booked 40 minutes apart"
+      },
+      "T-2020|T-2020": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["quantity", "gross_amount"],
+        "case": "counterparty recorded a smaller quantity"
+      },
+      "T-2021|T-2021": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["side"],
+        "case": "counterparty recorded the opposite side"
+      },
+      "T-2022|T-2022": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["instrument"],
+        "case": "counterparty settled the same reference in a different instrument"
+      },
+      "T-2023|T-2023": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at", "price", "gross_amount"],
+        "case": "time, price and gross all drift at once"
+      },
+      "T-2024|T-2024": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["gross_amount"],
+        "case": "gross 10.5 basis points apart, just outside the relative money tolerance"
+      },
+      "T-2025|T-2025": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at"],
+        "case": "121 seconds apart, just outside the time tolerance"
+      },
+      "T-2026|T-2026": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["quantity"],
+        "case": "quantity 0.00000002 apart, just outside the quantity tolerance"
+      },
+      "T-2027|": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled on both sides and never compared"
+      },
+      "|T-2027": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled on both sides and never compared"
+      },
+      "T-2028|": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled in the ledger with no counterparty row"
+      },
+      "|T-2029": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "the ledger settled a trade the counterparty cancelled"
+      },
+      "T-2029|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the ledger settled a trade the counterparty cancelled"
+      },
+      "T-2030|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "ledger-only trade with no counterparty row"
+      },
+      "T-2031|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "ledger trade booked at 23:58 on the last day of the period"
+      },
+      "T-2032|C-9104": {
+        "status": "MATCHED",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.9667",
+        "failing_fields": [],
+        "case": "different references one minute apart, matched on similarity"
+      },
+      "T-2033|C-9105": {
+        "status": "DIFFERENT",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.7834",
+        "failing_fields": ["executed_at", "price", "gross_amount"],
+        "case": "different references matched on similarity, with a real fee and time break"
+      },
+      "T-2034|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "two equally close counterparty rows, so the tie is refused rather than guessed"
+      },
+      "T-2035|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "gross 1.26 percent apart, outside the candidate gate, left for a manual match"
+      },
+      "T-2036|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "468 seconds apart, scoring 0.74 and below the 0.75 threshold"
+      },
+      "T-2037|C-9110": {
+        "status": "DIFFERENT",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.7500",
+        "failing_fields": ["executed_at"],
+        "case": "450 seconds apart, scoring exactly 0.75, the inclusive threshold"
+      },
+      "T-2038|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "one ledger order the counterparty reported as two partial fills"
+      },
+      "T-2039|T-2039": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical twin trade matched by reference rather than by similarity"
+      },
+      "T-2040|T-2040": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical twin trade matched by reference rather than by similarity"
+      }
+    }
+  },
+  "corrected": {
+    "ledger_file": "ledger-wide-correction.csv",
+    "counterparty_file": "counterparty-wide-correction.csv",
+    "summary": {
+      "MATCHED": 24,
+      "DIFFERENT": 8,
+      "UNMATCHED_LEDGER": 6,
+      "UNMATCHED_COUNTERPARTY": 7,
+      "MANUALLY_MATCHED": 0,
+      "ACCEPTED_UNMATCHED": 0,
+      "EXCLUDED_CANCELLED": 5
+    },
+    "items": {
+      "|C-9101": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only cancelled row"
+      },
+      "|C-9102": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only trade with no ledger row"
+      },
+      "|C-9103": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty-only adjustment row"
+      },
+      "|C-9106": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "one half of the refused ambiguous tie"
+      },
+      "|C-9107": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the other half of the refused ambiguous tie"
+      },
+      "|C-9109": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the counterparty half of the below-threshold pair"
+      },
+      "|C-9111": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "first partial fill, never aggregated automatically"
+      },
+      "|C-9112": {
+        "status": "UNMATCHED_COUNTERPARTY",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "second partial fill, never aggregated automatically"
+      },
+      "T-2001|T-2001": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical rows on both sides"
+      },
+      "T-2002|T-2002": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty timestamp carries a +02:00 offset for the same instant"
+      },
+      "T-2003|T-2003": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "90-second clock skew, inside the 120-second time tolerance"
+      },
+      "T-2004|T-2004": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "one-cent rounding difference, inside the absolute money tolerance"
+      },
+      "T-2005|T-2005": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "large notional 0.9 basis points apart, inside the relative money tolerance"
+      },
+      "T-2006|T-2006": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "same values written with a different decimal scale"
+      },
+      "T-2007|T-2007": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "lower-case instrument and side in both files"
+      },
+      "T-2008|T-2008": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty row padded with surrounding whitespace"
+      },
+      "T-2009|t-2009": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty reference differs only by letter case"
+      },
+      "T-2010|T-2010": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "sub-second timestamps 250 ms apart"
+      },
+      "T-2011|T-2011": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "exactly 120 seconds apart, the inclusive edge of the time tolerance"
+      },
+      "T-2012|T-2012": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "gross 9.7 basis points apart, just inside the relative money tolerance"
+      },
+      "T-2013|T-2013": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "quantity 0.00000001 apart, the inclusive edge of the quantity tolerance"
+      },
+      "T-2014|T-2014": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "zero price and zero gross, guarding relative comparison against divide-by-zero"
+      },
+      "T-2015|T-2015": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "row repeated identically in the ledger file and deduplicated on ingest"
+      },
+      "T-2016|T-2016": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "eight-decimal crypto quantity preserved exactly"
+      },
+      "T-2017|T-2017": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "counterparty row written with every field quoted"
+      },
+      "T-2018|T-2018": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "corrected ledger price and gross now agree with the counterparty"
+      },
+      "T-2019|T-2019": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at"],
+        "case": "same trade booked 40 minutes apart"
+      },
+      "T-2020|T-2020": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "corrected ledger quantity and gross now agree with the counterparty"
+      },
+      "T-2021|T-2021": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["side"],
+        "case": "counterparty recorded the opposite side"
+      },
+      "T-2022|T-2022": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["instrument"],
+        "case": "counterparty settled the same reference in a different instrument"
+      },
+      "T-2023|T-2023": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at", "price", "gross_amount"],
+        "case": "time, price and gross all drift at once"
+      },
+      "T-2024|T-2024": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "corrected ledger gross now agrees with the counterparty"
+      },
+      "T-2025|T-2025": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["executed_at"],
+        "case": "121 seconds apart, just outside the time tolerance"
+      },
+      "T-2026|T-2026": {
+        "status": "DIFFERENT",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": ["quantity"],
+        "case": "quantity 0.00000002 apart, just outside the quantity tolerance"
+      },
+      "T-2027|": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled on both sides and never compared"
+      },
+      "|T-2027": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled on both sides and never compared"
+      },
+      "T-2028|": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "cancelled in the ledger with no counterparty row"
+      },
+      "|T-2029": {
+        "status": "EXCLUDED_CANCELLED",
+        "method": "EXCLUDED",
+        "score": null,
+        "failing_fields": [],
+        "case": "the ledger settled a trade the counterparty cancelled"
+      },
+      "T-2029|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "the ledger settled a trade the counterparty cancelled"
+      },
+      "T-2030|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "ledger-only trade with no counterparty row"
+      },
+      "T-2031|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "ledger trade booked at 23:58 on the last day of the period"
+      },
+      "T-2032|C-9104": {
+        "status": "MATCHED",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.9667",
+        "failing_fields": [],
+        "case": "different references one minute apart, matched on similarity"
+      },
+      "T-2033|C-9105": {
+        "status": "DIFFERENT",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.8333",
+        "failing_fields": ["executed_at"],
+        "case": "corrected counterparty amounts leave only the genuine time break"
+      },
+      "T-2034|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "two equally close counterparty rows, so the tie is refused rather than guessed"
+      },
+      "T-2035|C-9108": {
+        "status": "MATCHED",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.9333",
+        "failing_fields": [],
+        "case": "corrected counterparty amounts bring the pair inside the candidate gate"
+      },
+      "T-2036|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "468 seconds apart, scoring 0.74 and below the 0.75 threshold"
+      },
+      "T-2037|C-9110": {
+        "status": "DIFFERENT",
+        "method": "CANDIDATE_SCORE",
+        "score": "0.7500",
+        "failing_fields": ["executed_at"],
+        "case": "450 seconds apart, scoring exactly 0.75, the inclusive threshold"
+      },
+      "T-2038|": {
+        "status": "UNMATCHED_LEDGER",
+        "method": "NONE",
+        "score": null,
+        "failing_fields": [],
+        "case": "one ledger order the counterparty reported as two partial fills"
+      },
+      "T-2039|T-2039": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical twin trade matched by reference rather than by similarity"
+      },
+      "T-2040|T-2040": {
+        "status": "MATCHED",
+        "method": "EXACT_ID",
+        "score": null,
+        "failing_fields": [],
+        "case": "identical twin trade matched by reference rather than by similarity"
+      }
+    }
+  }
+}

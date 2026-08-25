@@ -13,6 +13,7 @@ async function available(url) {
 const normalize = (item) => ({
   status: item.status,
   match_method: item.match_method,
+  score: item.score,
   ledger: item.ledger?.external_id ?? null,
   counterparty: item.counterparty?.external_id ?? null,
   differences: item.differences.map((d) => ({

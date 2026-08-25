@@ -57,6 +57,9 @@ def parse_csv(content: bytes, source: str):
         )
     rows, errors, seen = [], [], {}
     for number, raw in enumerate(reader, start=2):
+        # Short or over-long rows become empty values rather than parser crashes,
+        # so ragged files are reported as validation errors like any other defect.
+        raw = {column: (raw.get(column) or "") for column in expected}
         try:
             if source == "LEDGER":
                 external_id = raw["trade_id"].strip()

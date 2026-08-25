@@ -1,0 +1,2 @@
+trade_ref,traded_at,instrument,side,quantity,price,gross_amount,state
+T-3001,2025-08-04T09:00:00Z,BTC-USD,BUY,0.50,61500.00,30750.00,SETTLED
