@@ -2,7 +2,7 @@
 
 ## Goals and constraints
 
-The system must ingest two independently designed CSV formats, retain corrections, produce reproducible reconciliation runs, explain every automatic decision, and preserve manual decisions. The same public behavior is implemented independently in Python and Node. SQLite keeps reviewer setup small; the shared API contract and fixtures keep the implementations aligned.
+The system must ingest independently designed CSV formats, retain corrections, produce reproducible reconciliation runs, explain every automatic decision, and preserve manual decisions. The same public behavior is implemented independently in Python and Node. Both services use one PostgreSQL schema so operational history is shared; the API contract and fixtures keep their behavior aligned.
 
 Non-goals are authentication, asynchronous processing, multi-tenancy, production file storage, and probabilistic or machine-learned matching.
 
@@ -13,13 +13,13 @@ flowchart LR
   O[Operations user] --> W[React web app]
   W -->|same OpenAPI contract| P[FastAPI backend]
   W -->|same OpenAPI contract| N[Fastify backend]
-  P --> PD[(Python SQLite)]
-  N --> ND[(Node SQLite)]
+  P --> DB[(Shared PostgreSQL / Neon)]
+  N --> DB
   F[Shared fixtures and golden outcomes] --> P
   F --> N
 ```
 
-The frontend is backend-agnostic. The databases are intentionally independent: parity is established through behavior, not shared state or shared domain implementation.
+The frontend is backend-agnostic. Python is the schema owner through Alembic and SQLAlchemy. Node uses Knex to query the same schema and verifies the Alembic version at startup; it does not run a second migration history.
 
 ## Canonical transaction
 
@@ -43,23 +43,31 @@ erDiagram
 
 ```mermaid
 flowchart TD
-  U[Upload CSV and source] --> H[Compute SHA-256]
-  H --> D{Checksum already accepted?}
+  U[Upload CSV, source, and mode] --> H[Detect or select adapter]
+  H --> C[Compute SHA-256]
+  C --> D{Checksum, mode, and adapter already accepted?}
   D -->|yes| I[Return idempotent duplicate result]
   D -->|no| V[Parse and validate every row]
   V --> E{Any error?}
   E -->|yes| R[Reject whole file with row errors]
-  E -->|no| T[Start transaction]
-  T --> C{Stable transaction exists?}
-  C -->|no| A[Create identity and first version]
-  C -->|yes, unchanged| S[Keep current version]
-  C -->|yes, changed| X[Append version and advance current pointer]
+  E -->|no| T[Start database transaction]
+  T --> K{Stable transaction exists?}
+  K -->|no| A[Create identity and first version]
+  K -->|yes, unchanged| S[Keep current version]
+  K -->|yes, changed| X[Append version and advance current pointer]
   A --> M[Commit file and audit event]
   S --> M
-  X --> M
+  X --> Q{Snapshot mode?}
+  Q -->|yes| O[Mark omitted identities inactive]
+  Q -->|no| M
+  O --> M
 ```
 
-Omitted rows remain active because files are versioned upserts rather than complete snapshots. Cancelled rows remain queryable but do not participate in matching.
+Incremental uploads are versioned upserts, so omitted rows remain active. Snapshot uploads represent the complete current source and mark omitted identities inactive without confusing absence with an explicit cancellation. A later appearance creates a new version and reactivates the identity. Cancelled and inactive rows remain queryable but do not participate in matching.
+
+### Adapter boundary
+
+The logical source remains `LEDGER` or `COUNTERPARTY`; a physical file format is selected independently. Registered adapters declare source compatibility, required header signatures, and normalization behavior. Straight column renames use declarative mappings, while complex conversions use small code adapters. Auto-detection must resolve to exactly one adapter unless the request supplies an explicit override. Extra columns are retained in raw JSONB.
 
 ## Matching and reconciliation
 
@@ -90,7 +98,18 @@ Comparisons use 120 seconds for time, `0.00000001` absolute for quantity, and th
 
 ## Resolutions and auditability
 
-Manual pairs and accepted-unmatched decisions use stable transaction identities and therefore survive corrected versions. A transaction can have only one active resolution. Changes supersede prior rows rather than deleting them. If a transaction becomes cancelled, its resolution is retained but dormant. Every upload, run, and resolution writes an audit event using the local demo actor.
+Manual pairs, accepted-unmatched decisions, and accepted-difference decisions use stable transaction identities and therefore survive corrected versions. A transaction can have only one active resolution of a given purpose. Changes supersede prior rows rather than deleting them. If a transaction becomes cancelled or inactive, its resolution is retained but dormant. Every upload, run, resolution, and closure writes an audit event using the local demo actor.
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN: reconciliation created
+  OPEN --> READY_TO_CLOSE: no unresolved exceptions
+  READY_TO_CLOSE --> OPEN: a resolution is superseded
+  READY_TO_CLOSE --> CLOSED: operator closes run
+  CLOSED --> [*]
+```
+
+`MATCHED_WITH_DIFFERENCES`, ledger-unmatched, and counterparty-unmatched items are review exceptions. A run becomes ready only after every exception has an active decision. Closed runs and their item snapshots are immutable; subsequent uploads always produce a new run.
 
 ## API and error strategy
 
@@ -101,8 +120,8 @@ Manual pairs and accepted-unmatched decisions use stable transaction identities 
 | Concern | Python | Node |
 |---|---|---|
 | HTTP | FastAPI | Fastify |
-| Persistence | SQLAlchemy 2 | Knex |
-| Migrations | Alembic | Knex migrations |
+| Persistence | SQLAlchemy 2 | Knex with `pg` |
+| Migrations | Alembic (schema owner) | Alembic-version check only |
 | Decimal math | `decimal.Decimal` | `decimal.js` |
 | Validation | Pydantic | JSON Schema / TypeBox-style schemas |
 | Tests | pytest | Node test runner |
@@ -115,7 +134,7 @@ Domain functions remain database-independent and use domain names rather than pe
 
 ## Testing strategy
 
-Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or SQLite. Integration tests cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, and auditing. Both services are also held to one shared expectations file over the extended fixture week, which pins every tolerance boundary, scoring threshold, ambiguity refusal and rejected file. The conformance runner seeds both services with the same fixtures and compares normalized API outcomes. The React workflow is designed to run unchanged against either API.
+Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, closure, and auditing. Both services are also held to one shared expectations file over the extended fixture week. The conformance runner resets that test database between implementations and compares normalized API outcomes. The React workflow is designed to run unchanged against either API.
 
 ## Security and production readiness
 
@@ -126,8 +145,12 @@ The take-home accepts local CSV files and has no authentication. Production work
 | Decision | Reason |
 |---|---|
 | Python is the primary demo | Makes the learning outcome visible while retaining the author's strongest-stack comparison. |
-| Separate SQLite databases | Reviewer-friendly setup and independent proof of persistence behavior. |
+| Shared PostgreSQL database | Both APIs expose one operational history and match the intended hosted Neon runtime. |
+| Alembic is the only migration owner | Python remains primary and competing migration histories cannot race on shared tables. |
+| Knex remains the Node persistence layer | The secondary backend needs readable typed queries, not an additional ORM. |
 | Contract-first API | Prevents frontend forks and makes parity measurable. |
-| Versioned upserts | Corrections preserve history without assuming every file is a complete snapshot. |
+| Explicit incremental or snapshot uploads | Corrections preserve history while complete extracts can intentionally retire omissions. |
+| Hybrid adapter registry | Simple mappings stay declarative and complex source rules remain testable code. |
+| Explicit run closure | A flagged exception always ends with a durable human decision. |
 | Conservative deterministic matching | Financial reconciliation must favor explainability over coverage. |
 | Synchronous runs | Appropriate for generated take-home data; background jobs are operational scope. |

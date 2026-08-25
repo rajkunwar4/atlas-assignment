@@ -9,11 +9,14 @@ The project intentionally implements the same product twice: Python/FastAPI is t
 - Atomic CSV validation and source-specific normalization
 - Idempotent uploads using file checksums
 - Immutable row version history for corrections
+- Auto-detected, extensible CSV format adapters
+- Explicit incremental and complete-snapshot uploads
 - Exact-reference and explainable candidate matching
 - Configurable financial and time tolerances
 - Side-by-side field differences and match explanations
-- Persistent manual matches and accepted-unmatched decisions
+- Persistent manual matches, exception decisions, and run sign-off
 - Immutable reconciliation run snapshots and audit events
+- One PostgreSQL history shared by both backend implementations
 - CSV export and a shared API contract
 
 See [docs/architecture.md](docs/architecture.md) for the design, data model, matching rules, and decision log.
@@ -22,6 +25,7 @@ See [docs/architecture.md](docs/architecture.md) for the design, data model, mat
 
 - Node.js 20 or newer
 - Python 3.11 or newer
+- PostgreSQL 15 or newer, or a Neon PostgreSQL database
 
 ## Install
 
@@ -104,8 +108,8 @@ Install a Playwright browser once with `npx playwright install chromium`, then r
 
 ```text
 apps/web          Shared React and TypeScript interface
-apps/api-python   FastAPI, SQLAlchemy, Alembic, and SQLite
-apps/api-node     Fastify, Knex, and SQLite
+apps/api-python   FastAPI, SQLAlchemy, Alembic, and PostgreSQL
+apps/api-node     Fastify, Knex, and PostgreSQL
 shared/openapi    Contract-first API description
 shared/fixtures   Generated demonstration CSV data
 shared/conformance Black-box backend parity checks
@@ -120,8 +124,8 @@ This is a single-operator take-home application. Authentication, background jobs
 
 - Review and supersede manual resolutions from the UI
 - Stream very large files and execute reconciliation in background workers
-- Add source adapter configuration rather than code-defined formats
-- Add PostgreSQL and object-storage deployment profiles
+- Add an operator UI for registering declarative adapter mappings
+- Add object-storage deployment profiles
 - Add authentication and per-action operator identities
 
 ## Demo video
