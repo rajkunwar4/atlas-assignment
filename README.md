@@ -2,7 +2,7 @@
 
 Atlas Reconciliation is a small operations console for reconciling transactions recorded by two companies. It ingests mismatched CSV formats, preserves corrections, performs conservative and explainable matching, highlights material differences, and remembers manual decisions across runs.
 
-The project intentionally implements the same product twice: Python/FastAPI is the primary learning implementation, while TypeScript/Fastify demonstrates that the domain model and API contract are portable. Both backends are consumed by one React UI and verified with shared fixtures.
+Built against [PROBLEM_STATEMENT.md](PROBLEM_STATEMENT.md) with a Python/FastAPI backend, PostgreSQL, and a React UI.
 
 ## Features
 
@@ -15,9 +15,8 @@ The project intentionally implements the same product twice: Python/FastAPI is t
 - Configurable financial and time tolerances
 - Side-by-side field differences and match explanations
 - Persistent manual matches, exception decisions, and run sign-off
-- Immutable reconciliation run snapshots and audit events
-- One PostgreSQL history shared by both backend implementations
-- CSV export and a shared API contract
+- Immutable reconciliation run snapshots and audit events, with only one run open at a time
+- CSV export and an OpenAPI-described contract
 
 See [docs/architecture.md](docs/architecture.md) for the design, data model, matching rules, and decision log.
 
@@ -41,7 +40,7 @@ replace `DATABASE_URL` with its pooled connection string and `DIRECT_URL` with t
 non-pooler connection string. Keep `TEST_DATABASE_URL` pointed at a disposable local
 database. Never commit `.env` or use the Neon database for destructive tests.
 
-## Run with the Python backend
+## Run the app
 
 ```bash
 npm run reset:db
@@ -52,27 +51,13 @@ npm run dev:python
 In another terminal:
 
 ```bash
-VITE_API_URL=http://localhost:8000 npm run dev:web
+npm run dev:web
 ```
 
-## Run with the Node backend
+Open `http://localhost:5173`.
 
-```bash
-npm run reset:db
-npm run seed:node
-npm run dev:node
-```
-
-In another terminal:
-
-```bash
-VITE_API_URL=http://localhost:8001 npm run dev:web
-```
-
-Open `http://localhost:5173`. The development backend switcher can move between the Python API on port 8000 and Node API on port 8001 without changing frontend code. Both APIs show the same PostgreSQL-backed files, runs, resolutions, and audit history.
-
-Alembic is the only schema migration authority. Always run `npm run migrate` before either
-backend; `npm run check:schema:node` verifies that Node recognizes the migrated schema.
+Alembic is the only schema migration authority. Always run `npm run migrate` before starting
+the backend.
 
 ## Demo workflow
 
@@ -98,11 +83,11 @@ sitting immediately on either side of each tolerance and scoring threshold. Two 
 files restate a few amounts, two reformatted files restate none, and `shared/fixtures/invalid`
 holds twelve files that must be rejected whole.
 
-Load it with `npm run seed:python -- wide` or `npm run seed:node -- wide` after `npm run reset:db`, or
-upload the two files through the screen.
+Load it with `npm run seed:python -- wide` after `npm run reset:db`, or upload the two files
+through the screen.
 
 Every expected outcome is recorded in `shared/expected-results/wide.json` and
-`shared/expected-results/invalid-files.json`, and both backends are tested against them.
+`shared/expected-results/invalid-files.json`, and the backend is tested against them.
 [shared/fixtures/README.md](shared/fixtures/README.md) catalogues each row and what it covers.
 
 ## Tests and verification
@@ -113,35 +98,54 @@ npm run build
 npm run quality
 ```
 
-Run individual suites with `npm run test:python`, `npm run test:node`, or `npm run test:web`. The backend suites automatically migrate `TEST_DATABASE_URL`. With both APIs running and one fixture set seeded, run `npm run test:conformance`; each backend independently creates a run and the test compares their normalized outcomes.
+Run individual suites with `npm run test:python` or `npm run test:web`. The backend suite
+automatically migrates `TEST_DATABASE_URL`.
 
-Install a Playwright browser once with `npx playwright install chromium`, then run `npm run test:e2e` to reset the safe configured database and execute the same upload, reconciliation, and difference-inspection workflow against both backends.
+Install a Playwright browser once with `npx playwright install chromium`, then run `npm run test:e2e` to reset the safe configured database and execute the same upload, reconciliation, and difference-inspection workflow end to end.
 
 Useful database commands:
 
 ```bash
-npm run db:up              # start local PostgreSQL
-npm run migrate            # apply the Alembic schema
-npm run check:schema:node  # confirm Node compatibility
-npm run reset:db           # local/test databases only; remote targets are refused
-npm run db:down            # stop local PostgreSQL
+npm run db:up      # start local PostgreSQL
+npm run migrate    # apply the Alembic schema
+npm run reset:db   # local/test databases only; remote targets are refused
+npm run db:down    # stop local PostgreSQL
 ```
 
 ## Repository structure
 
 ```text
-apps/web          Shared React and TypeScript interface
+apps/web          React and TypeScript interface
 apps/api-python   FastAPI, SQLAlchemy, Alembic, and PostgreSQL
-apps/api-node     Fastify, Knex, and PostgreSQL
-shared/openapi    Contract-first API description
+shared/openapi    API contract description
 shared/fixtures   Generated demonstration CSV data
-shared/conformance Black-box backend parity checks
 docs              Architecture and operational documentation
 ```
 
 ## Intentional boundaries
 
 This is a single-operator take-home application. Authentication, background jobs, object storage, multi-tenancy, and deployment automation are intentionally omitted. Runs execute synchronously and files are held in memory while being validated. AI is deliberately excluded from matching and approval: financial outcomes remain deterministic and attributable to rules or a named human decision.
+
+## Decisions
+
+The brief says to record decisions made where the brief itself was silent, and to keep a
+reference copy of it — see [PROBLEM_STATEMENT.md](PROBLEM_STATEMENT.md).
+
+- **One backend, not two.** The brief asks for "any Python web framework" (singular). An
+  earlier pass of this project also built a parallel Node/Fastify implementation sharing the
+  same Postgres database, to demonstrate that the domain model and API contract were portable.
+  That was removed: it was scope beyond the brief, it roughly doubled the surface area to
+  maintain, and — concretely — the two UIs writing runs into one shared table with no
+  concurrency guard is exactly what produced the bug described below. The domain/reconciliation
+  logic in `apps/api-python/app/domain.py` has no framework dependency, so a second
+  implementation remains straightforward to add later if it's ever needed again.
+- **Only one reconciliation run may be open at a time.** New uploads are rejected while a run
+  is open (see `docs/architecture.md`), which only makes sense if "the current run" is
+  unambiguous. `POST /api/runs` now rejects with `OPEN_RUN_EXISTS` if an unresolved run already
+  exists, and the "Start run" button is disabled while that run remains open. Previously
+  nothing enforced this, and repeated "Start run" clicks (surfaced here during manual testing of
+  the now-removed second backend) silently stacked up multiple abandoned open runs — each one
+  independently blocking new uploads, with no link in the UI back to which run was the culprit.
 
 ## Future work
 

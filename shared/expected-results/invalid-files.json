@@ -77,7 +77,7 @@
       "path": "invalid/counterparty-not-utf8.csv",
       "source": "COUNTERPARTY",
       "case": "the file carries a byte that is not valid UTF-8",
-      "note": "Python rejects the file at decode time; Node substitutes the byte and rejects the row that contains it. Both refuse the file, so only rejection is asserted here.",
+      "note": "The file is rejected at decode time, so only rejection is asserted here.",
       "errors": []
     }
   ]

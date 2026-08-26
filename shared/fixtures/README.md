@@ -129,15 +129,12 @@ Each file is refused as a whole; nothing in it is imported.
 | `invalid/counterparty-thousands-separator.csv` | Counterparty | A grouped number, `15,250.00`. |
 | `invalid/counterparty-not-utf8.csv` | Counterparty | A byte that is not valid UTF-8. |
 
-Both services reject all twelve. The wording of a few reasons differs: Python refuses the
-non-UTF-8 file at decode time while Node substitutes the byte and refuses the row that
-contains it, and Node reports `04/08/2025 09:45` as a missing timezone where Python reports
-it as a malformed ISO-8601 date-time. The shared expectations file asserts the row numbers
-and the wording the two services agree on.
+The service rejects all twelve. The shared expectations file asserts the relevant row numbers
+and stable fragments of each validation message.
 
 ## Tolerances these files were built against
 
-The boundary rows above assume the default settings in `app/domain.py` and `src/domain.ts`:
+The boundary rows above assume the default settings in `apps/api-python/app/domain.py`:
 120 seconds of clock skew, `0.00000001` absolute on quantity, `0.01` absolute or one basis
 point relative on money, and for candidate matching a 900-second window, `0.001` relative
 quantity, `0.01` relative gross and a minimum score of `0.75`. Change any of those and the

@@ -57,7 +57,7 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def http_error(_request: Request, exc: HTTPException):
-    """Keep FastAPI failures identical to the shared Node error envelope."""
+    """Keep HTTP failures in the API's documented error envelope."""
     body = (
         exc.detail
         if isinstance(exc.detail, dict)

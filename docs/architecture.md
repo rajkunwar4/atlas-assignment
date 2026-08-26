@@ -2,7 +2,7 @@
 
 ## Goals and constraints
 
-The system must ingest independently designed CSV formats, retain corrections, produce reproducible reconciliation runs, explain every automatic decision, and preserve manual decisions. The same public behavior is implemented independently in Python and Node. Both services use one PostgreSQL schema so operational history is shared; the API contract and fixtures keep their behavior aligned.
+The system must ingest independently designed CSV formats, retain corrections, produce reproducible reconciliation runs, explain every automatic decision, and preserve manual decisions.
 
 Non-goals are authentication, asynchronous processing, multi-tenancy, production file storage, and probabilistic or machine-learned matching.
 
@@ -11,15 +11,12 @@ Non-goals are authentication, asynchronous processing, multi-tenancy, production
 ```mermaid
 flowchart LR
   O[Operations user] --> W[React web app]
-  W -->|same OpenAPI contract| P[FastAPI backend]
-  W -->|same OpenAPI contract| N[Fastify backend]
-  P --> DB[(Shared PostgreSQL / Neon)]
-  N --> DB
+  W -->|OpenAPI contract| P[FastAPI backend]
+  P --> DB[(PostgreSQL / Neon)]
   F[Shared fixtures and golden outcomes] --> P
-  F --> N
 ```
 
-The frontend is backend-agnostic. Python is the schema owner through Alembic and SQLAlchemy. Node uses Knex to query the same schema and verifies the Alembic version at startup; it does not run a second migration history.
+Python is the schema owner through Alembic and SQLAlchemy.
 
 ## Canonical transaction
 
@@ -111,34 +108,26 @@ stateDiagram-v2
 
 `DIFFERENT`, ledger-unmatched, and counterparty-unmatched items are review exceptions. A run becomes ready only after every exception has an active decision. Closed runs and their item snapshots are immutable; subsequent uploads always produce a new run.
 
-Changed uploads are rejected while a run is open. Exact duplicate uploads remain harmless no-ops. This prevents a manual action from rebuilding an open run against transaction versions different from its original snapshot.
+Only one run may be open (`OPEN` or `READY_TO_CLOSE`) at a time: `POST /api/runs` rejects a
+new run with `OPEN_RUN_EXISTS` while one exists, and the UI disables "Start run" the same way.
+Changed uploads are rejected while a run is open, for the same reason: this prevents a manual
+action from rebuilding an open run against transaction versions different from its original
+snapshot, and it keeps "the current run" — the one blocking uploads — always the one thing an
+operator can see and close. Exact duplicate uploads remain harmless no-ops.
 
 ## API and error strategy
 
-`shared/openapi/openapi.yaml` is the public contract. Both services return UTC ISO timestamps, decimal strings, the same enums, and `{error: {code, message, details}}` failures. Validation completes before database mutation. Unexpected failures become generic 500 responses and retain internal diagnostic context in server logs.
+`shared/openapi/openapi.yaml` is the public contract: UTC ISO timestamps, decimal strings, and `{error: {code, message, details}}` failures. Validation completes before database mutation. Unexpected failures become generic 500 responses and retain internal diagnostic context in server logs.
 
-The runtime `DATABASE_URL` may use Neon's pooler. Alembic alone receives `DIRECT_URL`; the Node service checks the `alembic_version` table and fails fast rather than attempting its own migrations. Reset tooling permits local hosts by default and refuses hosted targets unless an explicit override is supplied.
-
-## Implementation mapping
-
-| Concern | Python | Node |
-|---|---|---|
-| HTTP | FastAPI | Fastify |
-| Persistence | SQLAlchemy 2 | Knex with `pg` |
-| Migrations | Alembic (schema owner) | Alembic-version check only |
-| Decimal math | `decimal.Decimal` | `decimal.js` |
-| Validation | Pydantic | JSON Schema / TypeBox-style schemas |
-| Tests | pytest | Node test runner |
-
-Neither backend imports reconciliation code from the other. Only the contract, fixture files, and expected outcomes are shared.
+The runtime `DATABASE_URL` may use Neon's pooler. Alembic alone receives `DIRECT_URL`. Reset tooling permits local hosts by default and refuses hosted targets unless an explicit override is supplied.
 
 ### Readability conventions
 
-Domain functions remain database-independent and use domain names rather than persistence terminology. Comments explain financial precision, candidate safety, versioning, and snapshot behavior; routine framework wiring is kept self-explanatory instead of being narrated line by line. Both implementations are auto-formatted and use small helpers at validation, persistence, and matching boundaries.
+Domain functions remain database-independent and use domain names rather than persistence terminology. Comments explain financial precision, candidate safety, versioning, and snapshot behavior; routine framework wiring is kept self-explanatory instead of being narrated line by line. The implementation is auto-formatted and uses small helpers at validation, persistence, and matching boundaries.
 
 ## Testing strategy
 
-Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, closure, and auditing. Both services are also held to one shared expectations file over the extended fixture week. The conformance runner resets that test database between implementations and compares normalized API outcomes. The React workflow is designed to run unchanged against either API.
+Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, closure, and auditing, and are held to one shared expectations file over the extended fixture week.
 
 ## Security and production readiness
 
@@ -148,11 +137,10 @@ The take-home accepts local CSV files and has no authentication. Production work
 
 | Decision | Reason |
 |---|---|
-| Python is the primary demo | Makes the learning outcome visible while retaining the author's strongest-stack comparison. |
-| Shared PostgreSQL database | Both APIs expose one operational history and match the intended hosted Neon runtime. |
-| Alembic is the only migration owner | Python remains primary and competing migration histories cannot race on shared tables. |
-| Knex remains the Node persistence layer | The secondary backend needs readable typed queries, not an additional ORM. |
-| Contract-first API | Prevents frontend forks and makes parity measurable. |
+| Single Python/FastAPI backend | The brief asks for "any Python web framework" (singular). An earlier pass added a second, parallel Node/Fastify implementation to demonstrate contract portability; it was removed as scope beyond the brief — see `README.md#decisions`. |
+| Alembic is the only migration owner | One backend, one schema owner; no risk of competing migration histories. |
+| Contract-first API | Keeps the frontend decoupled from server implementation details. |
+| Only one run open at a time | `POST /api/runs` rejects a second open run; previously nothing enforced this and repeated "Start run" clicks could stack up abandoned open runs that silently blocked future uploads. See `README.md#decisions`. |
 | Explicit incremental or snapshot uploads | Corrections preserve history while complete extracts can intentionally retire omissions. |
 | Hybrid adapter registry | Simple mappings stay declarative and complex source rules remain testable code. |
 | Explicit run closure | A flagged exception always ends with a durable human decision. |
