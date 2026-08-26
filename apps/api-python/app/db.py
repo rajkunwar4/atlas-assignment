@@ -4,7 +4,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
 def sqlalchemy_url(value: str) -> str:
-    """Use psycopg 3 while accepting standard URLs from Neon and Knex."""
+    """Use psycopg 3 while accepting Neon's standard postgres:// URLs."""
     if value.startswith("postgres://"):
         value = "postgresql://" + value.removeprefix("postgres://")
     if value.startswith("postgresql://"):

@@ -33,8 +33,7 @@ import type {
   UploadMode,
 } from "./types";
 
-const PYTHON_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const NODE_URL = import.meta.env.VITE_NODE_API_URL ?? "http://localhost:8001";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const statuses = [
   "",
   "MATCHED",
@@ -84,8 +83,7 @@ function Empty({ title, body }: { title: string; body: string }) {
 }
 
 export default function App() {
-  const [backend, setBackend] = useState(PYTHON_URL);
-  const api = useMemo(() => new ApiClient(backend), [backend]);
+  const api = useMemo(() => new ApiClient(API_URL), []);
   const [health, setHealth] = useState<Health | null>(null);
   const [files, setFiles] = useState<Ingestion[]>([]);
   const [adapters, setAdapters] = useState<Record<Source, Adapter[]>>({
@@ -139,10 +137,10 @@ export default function App() {
       setHealth(null);
       setNotice({
         kind: "error",
-        text: `Cannot reach ${backend}. ${e.message}`,
+        text: `Cannot reach ${API_URL}. ${e.message}`,
       });
     }
-  }, [api, backend]);
+  }, [api]);
   useEffect(() => {
     setActiveRun(null);
     setResults(null);
@@ -246,17 +244,10 @@ export default function App() {
             <h1>{tab === "results" ? "Reconciliation" : label(tab)}</h1>
           </div>
           <div className="header-actions">
-            <label className="backend">
+            <span className="backend">
               <span className={health ? "online" : "offline"} />
-              <select
-                aria-label="Backend implementation"
-                value={backend}
-                onChange={(e) => setBackend(e.target.value)}
-              >
-                <option value={PYTHON_URL}>Python · FastAPI</option>
-                <option value={NODE_URL}>Node · Fastify</option>
-              </select>
-            </label>
+              {health ? "Connected" : "Offline"}
+            </span>
             <button
               className="icon-button"
               aria-label="Refresh data"
@@ -326,7 +317,6 @@ export default function App() {
               search={search}
               setSearch={setSearch}
               select={setSelected}
-              backend={backend}
               closeRun={() =>
                 act(
                   "close-run",
@@ -583,7 +573,6 @@ function ResultsView({
   search,
   setSearch,
   select,
-  backend,
   closeRun,
 }: {
   run?: Run;
@@ -593,7 +582,6 @@ function ResultsView({
   search: string;
   setSearch: (s: string) => void;
   select: (x: ResultItem) => void;
-  backend: string;
   closeRun: () => void;
 }) {
   if (!run)
@@ -615,16 +603,13 @@ function ResultsView({
         <div>
           <p className="eyebrow">RUN #{String(run.id).padStart(3, "0")}</p>
           <h2>Exception workspace</h2>
-          <p>
-            Snapshot created {when(run.created_at)} · served by{" "}
-            {backend === NODE_URL ? "Node" : "Python"}
-          </p>
+          <p>Snapshot created {when(run.created_at)}</p>
         </div>
         <div className="header-actions">
           <StatusPill status={run.status} />
           <a
             className="secondary"
-            href={`${backend}/api/runs/${run.id}/export`}
+            href={`${API_URL}/api/runs/${run.id}/export`}
           >
             <Download size={16} />
             Export CSV

@@ -188,6 +188,9 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #34413b;
 }
 .backend > span {
   width: 7px;
@@ -200,14 +203,6 @@ header h1 {
 }
 .offline {
   background: #d66a33;
-}
-.backend select {
-  border: 0;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 700;
-  color: #34413b;
-  outline: none;
 }
 .primary,
 .secondary,

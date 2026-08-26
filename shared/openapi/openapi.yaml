@@ -154,5 +154,5 @@ components:
       required: [status, implementation, version]
       properties:
         status: { type: string, const: ok }
-        implementation: { type: string, enum: [python, node] }
+        implementation: { type: string, enum: [python] }
         version: { type: string }

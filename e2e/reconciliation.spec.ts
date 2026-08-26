@@ -3,12 +3,8 @@ import { resolve } from "node:path";
 
 test("uploads, reconciles, and explains a material difference", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.goto("/");
-  const backend = String(testInfo.project.metadata.backend);
-  await page
-    .getByLabel("Backend implementation")
-    .selectOption({ label: backend });
   await expect(
     page.getByRole("heading", { name: "Source files" }),
   ).toBeVisible();

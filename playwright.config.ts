@@ -15,19 +15,9 @@ export default defineConfig({
     },
     {
       command:
-        "npx dotenv -e .env -- env PORT=8101 npm --workspace apps/api-node start",
-      url: "http://127.0.0.1:8101/api/health",
-      reuseExistingServer: false,
-    },
-    {
-      command:
-        "env VITE_API_URL=http://127.0.0.1:8100 VITE_NODE_API_URL=http://127.0.0.1:8101 npm --workspace apps/web run dev -- --port 5174",
+        "env VITE_API_URL=http://127.0.0.1:8100 npm --workspace apps/web run dev -- --port 5174",
       url: "http://127.0.0.1:5174",
       reuseExistingServer: false,
     },
-  ],
-  projects: [
-    { name: "python", metadata: { backend: "Python · FastAPI" } },
-    { name: "node", metadata: { backend: "Node · Fastify" } },
   ],
 });

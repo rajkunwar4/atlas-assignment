@@ -12,8 +12,8 @@ Every file here is generated demonstration data. The files fall into four groups
 The expected outcome of every row is recorded in
 [`shared/expected-results/wide.json`](../expected-results/wide.json) and
 [`shared/expected-results/invalid-files.json`](../expected-results/invalid-files.json).
-Both backends are held to those files by `apps/api-python/tests/test_fixtures.py` and
-`apps/api-node/tests/fixtures.test.ts`, so this catalogue cannot drift away from the code.
+The backend is held to those files by `apps/api-python/tests/test_fixtures.py`, so this
+catalogue cannot drift away from the code.
 
 ## Using the extended week
 
@@ -24,9 +24,8 @@ demo data or on its own. Load it on its own for a clean summary:
 npm run reset:python && npm run seed:python -- wide
 ```
 
-The Node equivalent is `npm run reset:node && npm run seed:node -- wide`. Uploading
-`ledger-wide.csv` as **Ledger** and `counterparty-wide.csv` as **Counterparty** through the
-screen does the same thing. Start a run once both files are in. The summary is 20 matched, 11 different, 7 unmatched ledger rows,
+Uploading `ledger-wide.csv` as **Ledger** and `counterparty-wide.csv` as **Counterparty**
+through the screen does the same thing. Start a run once both files are in. The summary is 20 matched, 11 different, 7 unmatched ledger rows,
 8 unmatched counterparty rows and 5 excluded cancellations.
 
 Four rows are deliberately left for a human: `T-2034` has two equally close counterparty
