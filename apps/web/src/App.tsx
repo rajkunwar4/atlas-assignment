@@ -194,6 +194,7 @@ export default function App() {
     );
   const latest = (source: Source) => files.find((f) => f.source === source);
   const currentRun = runs.find((r) => r.id === activeRun) ?? runs[0];
+  const hasOpenRun = runs.some((r) => r.status !== "CLOSED");
   const nav = [
     { id: "overview", icon: LayoutDashboard, text: "Overview" },
     { id: "results", icon: SlidersHorizontal, text: "Reconciliation" },
@@ -257,7 +258,12 @@ export default function App() {
             </button>
             <button
               className="primary"
-              disabled={busy === "run"}
+              disabled={busy === "run" || hasOpenRun}
+              title={
+                hasOpenRun
+                  ? "Close the current run before starting a new one."
+                  : undefined
+              }
               onClick={startRun}
             >
               {busy === "run" ? (

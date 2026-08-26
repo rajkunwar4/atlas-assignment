@@ -526,6 +526,20 @@ def files(db: Session = Depends(get_db)):
 
 @app.post("/api/runs", status_code=201)
 def create_run(db: Session = Depends(get_db)):
+    open_run = db.scalar(
+        select(ReconciliationRun).where(ReconciliationRun.status != "CLOSED")
+    )
+    if open_run:
+        raise HTTPException(
+            409,
+            {
+                "error": {
+                    "code": "OPEN_RUN_EXISTS",
+                    "message": "close the current run before starting a new one",
+                    "details": [],
+                }
+            },
+        )
     sources = set(
         db.scalars(
             select(SourceTransaction.source).where(SourceTransaction.active)

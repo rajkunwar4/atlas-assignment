@@ -170,3 +170,41 @@ def test_differences_require_review_before_run_can_close():
         assert closed.status_code == 200
         assert closed.json()["status"] == "CLOSED"
         assert client.post(f"/api/runs/{run['id']}/close").status_code == 200
+
+
+def test_only_one_run_may_be_open_at_a_time():
+    with TestClient(app) as client:
+        assert upload(client, "LEDGER", "ledger.csv").status_code == 201
+        assert upload(client, "COUNTERPARTY", "counterparty.csv").status_code == 201
+        run = client.post("/api/runs").json()
+        assert run["status"] == "OPEN"
+
+        blocked = client.post("/api/runs")
+        assert blocked.status_code == 409
+        assert blocked.json()["error"]["code"] == "OPEN_RUN_EXISTS"
+        assert client.get("/api/runs").json() == [run]
+
+        # Resolving repopulates the run's items, so re-fetch after every decision
+        # instead of iterating a stale snapshot of item ids.
+        for _ in range(50):
+            items = client.get(f"/api/runs/{run['id']}/results").json()["items"]
+            pending = next((x for x in items if x["review_status"] == "PENDING"), None)
+            if pending is None:
+                break
+            if pending["status"] == "DIFFERENT":
+                resolved = client.post(
+                    "/api/resolutions/accept-differences",
+                    json={"item_id": pending["id"], "note": "reviewed"},
+                )
+            else:
+                side = "ledger" if pending["status"] == "UNMATCHED_LEDGER" else "counterparty"
+                resolved = client.post(
+                    "/api/resolutions/accept-unmatched",
+                    json={"transaction_id": pending[side]["id"], "note": "reviewed"},
+                )
+            assert resolved.status_code == 201
+        assert client.get("/api/runs").json()[0]["summary"]["UNRESOLVED"] == 0
+        assert client.post(f"/api/runs/{run['id']}/close").status_code == 200
+
+        second = client.post("/api/runs")
+        assert second.status_code == 201
