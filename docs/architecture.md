@@ -101,6 +101,10 @@ Comparisons use 120 seconds for time, `0.00000001` absolute for quantity, and th
 
 Manual pairs, accepted-unmatched decisions, and accepted-difference decisions use stable transaction identities and therefore survive corrected versions. A transaction can have only one active resolution of a given purpose. Changes supersede prior rows rather than deleting them. If a transaction becomes cancelled, its resolution is retained but dormant. Every upload, run, resolution, and closure writes an audit event using the local demo actor.
 
+For unmatched rows, the UI loads opposite-side unmatched candidates independently of the active
+table filter. Selecting one opens a normalized Ledger-versus-Counterparty preview with differing
+values highlighted before the operator records a manual match.
+
 ```mermaid
 stateDiagram-v2
   [*] --> OPEN: reconciliation created
@@ -120,6 +124,11 @@ with. Exact duplicate uploads remain harmless no-ops. A later run uses every sto
 latest version and reapplies active manual decisions; closed runs retain their embedded results as
 immutable history. Runs have no business-date field and do not imply a calendar day.
 
+The Overview labels the cards as current source data rather than run attachments. During an open
+run the accepted file provenance remains visible, but each file picker is replaced by an explicit
+message that uploads resume after closure. Once closed, the picker returns for corrections or new
+rows.
+
 ## API and error strategy
 
 `shared/openapi/openapi.yaml` is the public contract: UTC ISO timestamps, decimal strings, and `{error: {code, message, details}}` failures. Validation completes before database mutation. Unexpected failures become generic 500 responses and retain internal diagnostic context in server logs.
@@ -132,7 +141,13 @@ Domain functions remain database-independent and use domain names rather than pe
 
 ## Testing strategy
 
-Unit tests exercise normalization, format detection, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, incremental corrections and omissions, resolutions, closure, and auditing, and are held to one shared expectations file over the extended fixture set.
+Unit tests exercise normalization, format detection, decimal tolerances, exact matching, candidate
+scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a
+disposable PostgreSQL database and cover atomic uploads, checksum idempotency, incremental
+corrections and omissions, resolutions, closure, and auditing. A four-run guided story verifies
+format switching, exact changed-row counts, immutable history, every durable decision type,
+duplicate idempotency, and complete-file rejection. Playwright covers the operator workflow and
+manual-candidate preview end to end.
 
 ## Security and production readiness
 

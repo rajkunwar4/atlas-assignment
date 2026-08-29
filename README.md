@@ -13,7 +13,7 @@ Built against [PROBLEM_STATEMENT.md](PROBLEM_STATEMENT.md) with a Python/FastAPI
 - Automatic incremental ingestion across registered source formats
 - Exact-reference and explainable candidate matching
 - Configurable financial and time tolerances
-- Side-by-side field differences and match explanations
+- Side-by-side field differences and manual-candidate comparisons
 - Persistent manual matches, exception decisions, and run sign-off
 - Immutable reconciliation run snapshots and audit events, with only one run open at a time
 - CSV export and an OpenAPI-described contract
@@ -59,18 +59,22 @@ Open `http://localhost:5173`.
 Alembic is the only schema migration authority. Always run `npm run migrate` before starting
 the backend.
 
-## Demo workflow
+## Guided demo workflow
 
-1. Upload `shared/fixtures/ledger.csv` as **Ledger**; its format is detected automatically.
-2. Upload `shared/fixtures/counterparty.csv` as **Counterparty**.
-3. Start a reconciliation run.
-4. Inspect the amount difference on `T-1011` and time difference on `T-1015`.
-5. Accept the explained differences, then manually match `T-1016` to `C-9001` or accept rows as genuinely unmatched.
-6. Close the run after its unresolved count reaches zero.
-7. Upload `shared/fixtures/ledger-correction.csv` to demonstrate immutable correction history.
-8. Start another run and verify the manual decision persists.
+The ordered files in [`shared/fixtures/story`](shared/fixtures/story/README.md) provide a complete
+four-run product demonstration:
 
-The seed commands perform the first two uploads automatically.
+1. Establish a baseline across the original Ledger and Counterparty formats, then record an
+   accepted difference, a manual pair, and accepted-unmatched decisions.
+2. Upload small incremental corrections and verify omitted rows remain current, unchanged rows do
+   not create versions, and earlier decisions are reapplied.
+3. Upload full exports in the shared canonical layout—the third physical format—and demonstrate
+   new transactions, conservative candidate matching, and an ambiguous tie the engine refuses to
+   guess.
+4. Apply a final correction and verify both generations of manual decisions persist.
+
+The same guide includes optional duplicate-upload and atomic-rejection checks. The original small
+fixtures remain available for `npm run seed:python` and the Playwright workflow.
 
 ## Extended data set
 
@@ -143,4 +147,5 @@ open at a time.
 
 ## Demo video
 
-Follow [docs/demo-script.md](docs/demo-script.md), then add the final 3-5 minute walkthrough URL here before submission.
+Add the final 3–5 minute walkthrough URL here before submission. The guided fixture sequence above
+provides the reproducible data and expected outcomes for recording it.

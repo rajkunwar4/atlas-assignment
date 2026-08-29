@@ -1,10 +1,11 @@
 # Fixture data
 
-Every file here is generated demonstration data. The files fall into four groups.
+Every file here is generated demonstration data. The files fall into five groups.
 
 | Group | Files | Purpose |
 | --- | --- | --- |
 | Original demo | `ledger.csv`, `counterparty.csv`, `ledger-correction.csv` | The small worked example from the assignment brief. Used by the seed scripts, the API tests and the Playwright workflow. |
+| Guided story | `story/01-*.csv` through `story/90-*.csv` | Four ordered reconciliation cycles that demonstrate ingestion, corrections, a third physical format, persistent decisions, ambiguity, cancellations, and atomic rejection. Follow `story/README.md`. |
 | Extended week | `ledger-wide.csv`, `counterparty-wide.csv` | One trading week (4–8 August 2025) covering every reconciliation outcome and both sides of every tolerance boundary. |
 | Corrections | `ledger-wide-correction.csv`, `counterparty-wide-correction.csv` | Full resends of the extended week with a few restated amounts, plus `ledger-wide-reformatted.csv` and `counterparty-wide-reformatted.csv`, which restate nothing at all. |
 | Rejections | `invalid/*.csv` | Twelve files that must be refused whole, one defect class per file. |
