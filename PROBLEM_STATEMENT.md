@@ -81,30 +81,3 @@ Commit as you normally would, as it will be reviewed via the commit history.
 Please also send a short video, 3 to 5 minutes, of the application running. A screen recording with
 narration. It need not be edited. Show a run from start to finish and talk through the cases judged
 worth handling. A Loom link, a Drive link, or an mp4 in the repository are all fine.
-
----
-
-## Reading this against what's actually built
-
-Quick fact-check notes — not part of the original brief, kept here so scope decisions can be traced
-back to the source instead of re-litigated from memory:
-
-- The brief asks for **"any Python web framework"** (singular). This repo ships two full backend
-  implementations (FastAPI and Fastify/Node) sharing one Postgres database, plus a backend switcher
-  in the UI. `README.md` documents this as an intentional choice to demonstrate contract
-  portability — it is scope beyond the brief, not an accident, but it is the single largest
-  source of complexity in the codebase and worth an explicit keep/cut decision.
-- The brief says **"Plain server-rendered pages are fine"** — it does not require a full SPA, but
-  doesn't forbid one either ("any way of building the UI"). The current React SPA is in bounds; the
-  question is whether its surrounding controls (upload mode selector, adapter override, file-format
-  detection dropdown, tolerance settings screen, audit/activity log, backend switcher) go beyond
-  "enough to be usable: start a run, see the results, inspect what differs, match by hand."
-- The brief never mentions blocking uploads while a run is open, or supporting multiple concurrent
-  runs — that entire state machine (`OPEN` / `READY_TO_CLOSE` / `CLOSED`, the `OPEN_RUN_EXISTS`
-  upload guard) was invented to fill an "anything unclear" gap. It is a reasonable safeguard in
-  principle, but the current implementation is missing the invariant that would make it correct
-  (nothing stops more than one run from being `OPEN` at a time), which is what produced the stuck
-  runs.
-- The one property the brief does require explicitly — **manual decisions must still hold
-  tomorrow** — is implemented (matches/accepts persist across runs) and should be preserved through
-  any simplification.

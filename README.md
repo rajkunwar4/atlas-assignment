@@ -10,7 +10,7 @@ Built against [PROBLEM_STATEMENT.md](PROBLEM_STATEMENT.md) with a Python/FastAPI
 - Idempotent uploads using file checksums
 - Immutable row version history for corrections
 - Auto-detected, extensible CSV format adapters
-- Explicit incremental and complete-snapshot uploads
+- Automatic incremental ingestion across registered source formats
 - Exact-reference and explainable candidate matching
 - Configurable financial and time tolerances
 - Side-by-side field differences and match explanations
@@ -61,7 +61,7 @@ the backend.
 
 ## Demo workflow
 
-1. Upload `shared/fixtures/ledger.csv` as **Ledger**, using incremental mode and automatic format detection.
+1. Upload `shared/fixtures/ledger.csv` as **Ledger**; its format is detected automatically.
 2. Upload `shared/fixtures/counterparty.csv` as **Counterparty**.
 3. Start a reconciliation run.
 4. Inspect the amount difference on `T-1011` and time difference on `T-1015`.
@@ -128,24 +128,10 @@ This is a single-operator take-home application. Authentication, background jobs
 
 ## Decisions
 
-The brief says to record decisions made where the brief itself was silent, and to keep a
-reference copy of it — see [PROBLEM_STATEMENT.md](PROBLEM_STATEMENT.md).
-
-- **One backend, not two.** The brief asks for "any Python web framework" (singular). An
-  earlier pass of this project also built a parallel Node/Fastify implementation sharing the
-  same Postgres database, to demonstrate that the domain model and API contract were portable.
-  That was removed: it was scope beyond the brief, it roughly doubled the surface area to
-  maintain, and — concretely — the two UIs writing runs into one shared table with no
-  concurrency guard is exactly what produced the bug described below. The domain/reconciliation
-  logic in `apps/api-python/app/domain.py` has no framework dependency, so a second
-  implementation remains straightforward to add later if it's ever needed again.
-- **Only one reconciliation run may be open at a time.** New uploads are rejected while a run
-  is open (see `docs/architecture.md`), which only makes sense if "the current run" is
-  unambiguous. `POST /api/runs` now rejects with `OPEN_RUN_EXISTS` if an unresolved run already
-  exists, and the "Start run" button is disabled while that run remains open. Previously
-  nothing enforced this, and repeated "Start run" clicks (surfaced here during manual testing of
-  the now-removed second backend) silently stacked up multiple abandoned open runs — each one
-  independently blocking new uploads, with no link in the UI back to which run was the culprit.
+The brief says to record decisions made where it was silent; the key choices are documented in
+[docs/architecture.md](docs/architecture.md#decision-log). In particular, ingestion is always
+incremental, file formats are detected automatically, and only one reconciliation run may remain
+open at a time.
 
 ## Future work
 

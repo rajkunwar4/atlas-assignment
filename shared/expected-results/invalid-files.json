@@ -1,5 +1,5 @@
 {
-  "description": "Files every backend must reject atomically. Row numbers are 1-based and include the header row. `contains` lists substrings that must appear in the reported reason, chosen so that both implementations satisfy them; where the two backends word a reason differently, only the row is asserted.",
+  "description": "Files the API must reject atomically. Row numbers are 1-based and include the header row. `contains` lists substrings that must appear in the reported reason.",
   "files": [
     {
       "path": "invalid/ledger-bad-header.csv",

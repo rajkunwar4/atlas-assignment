@@ -40,9 +40,9 @@ erDiagram
 
 ```mermaid
 flowchart TD
-  U[Upload CSV, source, and mode] --> H[Detect or select adapter]
+  U[Upload CSV and source] --> H[Detect exactly one adapter from headers]
   H --> C[Compute SHA-256]
-  C --> D{Checksum, mode, and adapter already accepted?}
+  C --> D{Source, checksum, and adapter already accepted?}
   D -->|yes| I[Return idempotent duplicate result]
   D -->|no| V[Parse and validate every row]
   V --> E{Any error?}
@@ -54,17 +54,21 @@ flowchart TD
   K -->|yes, changed| X[Append version and advance current pointer]
   A --> M[Commit file and audit event]
   S --> M
-  X --> Q{Snapshot mode?}
-  Q -->|yes| O[Mark omitted identities inactive]
-  Q -->|no| M
-  O --> M
+  X --> M
 ```
 
-Incremental uploads are versioned upserts, so omitted rows remain active. Snapshot uploads represent the complete current source and mark omitted identities inactive without confusing absence with an explicit cancellation. A later appearance creates a new version and reactivates the identity. Cancelled and inactive rows remain queryable but do not participate in matching.
+Every upload is a versioned upsert. Omitted rows remain available, unchanged rows create no new
+version, and corrected normalized values append an immutable version. Explicitly cancelled rows
+remain queryable but do not participate in matching.
 
 ### Adapter boundary
 
-The logical source remains `LEDGER` or `COUNTERPARTY`; a physical file format is selected independently. Registered adapters declare source compatibility, required header signatures, and normalization behavior. Straight column renames use declarative mappings, while complex conversions use small code adapters. Auto-detection must resolve to exactly one adapter unless the request supplies an explicit override. Extra columns are retained in raw JSONB.
+The logical source remains `LEDGER` or `COUNTERPARTY`. The adapter registry is internal: registered
+adapters declare source compatibility, header signatures, and normalization behavior. Each upload
+must match exactly one adapter for its selected source; unsupported or ambiguous headers reject the
+whole file. Straight column renames use declarative mappings, while complex conversions use small
+code adapters. Extra columns are retained in raw JSONB, and the detected adapter ID is retained in
+database and audit metadata as format provenance without being exposed as an operator choice.
 
 ## Matching and reconciliation
 
@@ -95,7 +99,7 @@ Comparisons use 120 seconds for time, `0.00000001` absolute for quantity, and th
 
 ## Resolutions and auditability
 
-Manual pairs, accepted-unmatched decisions, and accepted-difference decisions use stable transaction identities and therefore survive corrected versions. A transaction can have only one active resolution of a given purpose. Changes supersede prior rows rather than deleting them. If a transaction becomes cancelled or inactive, its resolution is retained but dormant. Every upload, run, resolution, and closure writes an audit event using the local demo actor.
+Manual pairs, accepted-unmatched decisions, and accepted-difference decisions use stable transaction identities and therefore survive corrected versions. A transaction can have only one active resolution of a given purpose. Changes supersede prior rows rather than deleting them. If a transaction becomes cancelled, its resolution is retained but dormant. Every upload, run, resolution, and closure writes an audit event using the local demo actor.
 
 ```mermaid
 stateDiagram-v2
@@ -111,9 +115,10 @@ stateDiagram-v2
 Only one run may be open (`OPEN` or `READY_TO_CLOSE`) at a time: `POST /api/runs` rejects a
 new run with `OPEN_RUN_EXISTS` while one exists, and the UI disables "Start run" the same way.
 Changed uploads are rejected while a run is open, for the same reason: this prevents a manual
-action from rebuilding an open run against transaction versions different from its original
-snapshot, and it keeps "the current run" — the one blocking uploads — always the one thing an
-operator can see and close. Exact duplicate uploads remain harmless no-ops.
+action from rebuilding an open cycle against transaction versions different from those it began
+with. Exact duplicate uploads remain harmless no-ops. A later run uses every stored transaction's
+latest version and reapplies active manual decisions; closed runs retain their embedded results as
+immutable history. Runs have no business-date field and do not imply a calendar day.
 
 ## API and error strategy
 
@@ -123,11 +128,11 @@ The runtime `DATABASE_URL` may use Neon's pooler. Alembic alone receives `DIRECT
 
 ### Readability conventions
 
-Domain functions remain database-independent and use domain names rather than persistence terminology. Comments explain financial precision, candidate safety, versioning, and snapshot behavior; routine framework wiring is kept self-explanatory instead of being narrated line by line. The implementation is auto-formatted and uses small helpers at validation, persistence, and matching boundaries.
+Domain functions remain database-independent and use domain names rather than persistence terminology. Comments explain financial precision, candidate safety, and versioning; routine framework wiring is kept self-explanatory instead of being narrated line by line. The implementation is auto-formatted and uses small helpers at validation, persistence, and matching boundaries.
 
 ## Testing strategy
 
-Unit tests exercise normalization, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, corrections, snapshots, resolutions, closure, and auditing, and are held to one shared expectations file over the extended fixture week.
+Unit tests exercise normalization, format detection, decimal tolerances, exact matching, candidate scoring, ambiguity, cancellation, and ordering without HTTP or PostgreSQL. Integration tests use a disposable PostgreSQL database and cover atomic uploads, checksum idempotency, incremental corrections and omissions, resolutions, closure, and auditing, and are held to one shared expectations file over the extended fixture set.
 
 ## Security and production readiness
 
@@ -137,11 +142,10 @@ The take-home accepts local CSV files and has no authentication. Production work
 
 | Decision | Reason |
 |---|---|
-| Single Python/FastAPI backend | The brief asks for "any Python web framework" (singular). An earlier pass added a second, parallel Node/Fastify implementation to demonstrate contract portability; it was removed as scope beyond the brief — see `README.md#decisions`. |
-| Alembic is the only migration owner | One backend, one schema owner; no risk of competing migration histories. |
+| Python/FastAPI API with Alembic migrations | Keeps one clear schema owner and migration history. |
 | Contract-first API | Keeps the frontend decoupled from server implementation details. |
-| Only one run open at a time | `POST /api/runs` rejects a second open run; previously nothing enforced this and repeated "Start run" clicks could stack up abandoned open runs that silently blocked future uploads. See `README.md#decisions`. |
-| Explicit incremental or snapshot uploads | Corrections preserve history while complete extracts can intentionally retire omissions. |
+| Only one run open at a time | Keeps the current review cycle unambiguous and prevents changed uploads from altering it. |
+| Automatic incremental ingestion | Operators select only a source and CSV; omissions remain available and corrections preserve history. |
 | Hybrid adapter registry | Simple mappings stay declarative and complex source rules remain testable code. |
 | Explicit run closure | A flagged exception always ends with a durable human decision. |
 | Conservative deterministic matching | Financial reconciliation must favor explainability over coverage. |

@@ -1,5 +1,5 @@
 {
-  "description": "Expected reconciliation outcome for the extended fixture set, with no manual resolutions applied. Both backends are tested against this file.",
+  "description": "Expected reconciliation outcome for the extended fixture set, with no manual resolutions applied. The reconciliation engine is tested against this file.",
   "base": {
     "ledger_file": "ledger-wide.csv",
     "counterparty_file": "counterparty-wide.csv",
