@@ -37,6 +37,13 @@ def upload(client, source, name):
     )
 
 
+def upload_story(client, source, name):
+    data = (ROOT / "shared/fixtures/story" / name).read_bytes()
+    return client.post(
+        f"/api/files?source={source}", files={"file": (name, data, "text/csv")}
+    )
+
+
 def upload_text(client, source, content):
     return client.post(
         f"/api/files?source={source}",
@@ -385,3 +392,202 @@ def test_invalid_upload_is_atomic_and_invalid_states_are_rejected():
         missing_source = client.post("/api/runs")
         assert missing_source.status_code == 409
         assert missing_source.json()["error"]["code"] == "MISSING_SOURCE"
+
+
+def test_guided_story_sequence_proves_corrections_formats_and_decision_persistence():
+    def results(client, run_id):
+        return client.get(f"/api/runs/{run_id}/results").json()
+
+    def item_for(items, external_id):
+        return next(
+            item
+            for item in items
+            if external_id
+            in {
+                (item.get("ledger") or {}).get("external_id"),
+                (item.get("counterparty") or {}).get("external_id"),
+            }
+        )
+
+    def assert_counts(summary, **expected):
+        for status, count in expected.items():
+            assert summary[status] == count, status
+
+    with TestClient(app) as client:
+        ledger = upload_story(client, "LEDGER", "01-ledger-baseline.csv")
+        counterparty = upload_story(
+            client, "COUNTERPARTY", "02-counterparty-baseline.csv"
+        )
+        assert ledger.json()["changed_count"] == 7
+        assert counterparty.json()["changed_count"] == 7
+
+        run1 = client.post("/api/runs").json()
+        run1_results = results(client, run1["id"])
+        assert_counts(
+            run1_results["summary"],
+            MATCHED=3,
+            DIFFERENT=1,
+            UNMATCHED_LEDGER=2,
+            UNMATCHED_COUNTERPARTY=2,
+            EXCLUDED_CANCELLED=2,
+            UNRESOLVED=5,
+        )
+        items = run1_results["items"]
+        difference = item_for(items, "ST-1003")
+        assert (
+            client.post(
+                "/api/resolutions/accept-differences",
+                json={"item_id": difference["id"], "note": "broker confirmed"},
+            ).status_code
+            == 201
+        )
+        ledger_manual = item_for(items, "L-MANUAL-1")["ledger"]
+        counterparty_manual = item_for(items, "C-MANUAL-1")["counterparty"]
+        assert (
+            client.post(
+                "/api/resolutions/match",
+                json={
+                    "ledger_transaction_id": ledger_manual["id"],
+                    "counterparty_transaction_id": counterparty_manual["id"],
+                    "note": "external ticket",
+                },
+            ).status_code
+            == 201
+        )
+        for external_id, side in (
+            ("L-ONLY-1", "ledger"),
+            ("C-ONLY-1", "counterparty"),
+        ):
+            transaction = item_for(items, external_id)[side]
+            assert (
+                client.post(
+                    "/api/resolutions/accept-unmatched",
+                    json={"transaction_id": transaction["id"], "note": "confirmed"},
+                ).status_code
+                == 201
+            )
+        assert client.get("/api/runs").json()[0]["summary"]["UNRESOLVED"] == 0
+        assert client.post(f"/api/runs/{run1['id']}/close").status_code == 200
+
+        ledger_fix = upload_story(
+            client, "LEDGER", "03-ledger-corrections-incremental.csv"
+        )
+        counterparty_fix = upload_story(
+            client,
+            "COUNTERPARTY",
+            "04-counterparty-corrections-incremental.csv",
+        )
+        assert ledger_fix.json()["changed_count"] == 1
+        assert counterparty_fix.json()["changed_count"] == 1
+        run2 = client.post("/api/runs").json()
+        assert_counts(
+            run2["summary"],
+            MATCHED=4,
+            DIFFERENT=0,
+            MANUALLY_MATCHED=1,
+            ACCEPTED_UNMATCHED=2,
+            EXCLUDED_CANCELLED=2,
+            UNRESOLVED=0,
+        )
+        corrected = item_for(results(client, run2["id"])["items"], "ST-1003")
+        history = client.get(
+            f"/api/transactions/{corrected['ledger']['id']}/history"
+        ).json()
+        assert [version["data"]["price"] for version in history] == [
+            "152.00",
+            "150.00",
+        ]
+        assert client.post(f"/api/runs/{run2['id']}/close").status_code == 200
+
+        canonical_ledger = upload_story(
+            client, "LEDGER", "05-ledger-full-canonical.csv"
+        )
+        canonical_counterparty = upload_story(
+            client, "COUNTERPARTY", "06-counterparty-full-canonical.csv"
+        )
+        assert canonical_ledger.json()["changed_count"] == 4
+        assert canonical_counterparty.json()["changed_count"] == 5
+        run3 = client.post("/api/runs").json()
+        assert_counts(
+            run3["summary"],
+            MATCHED=6,
+            DIFFERENT=1,
+            MANUALLY_MATCHED=1,
+            ACCEPTED_UNMATCHED=2,
+            UNMATCHED_LEDGER=1,
+            UNMATCHED_COUNTERPARTY=2,
+            EXCLUDED_CANCELLED=2,
+            UNRESOLVED=4,
+        )
+        items = results(client, run3["id"])["items"]
+        difference = item_for(items, "ST-3002")
+        assert (
+            client.post(
+                "/api/resolutions/accept-differences",
+                json={"item_id": difference["id"], "note": "known adjustment"},
+            ).status_code
+            == 201
+        )
+        tie_ledger = item_for(items, "L-TIE-1")["ledger"]
+        tie_a = item_for(items, "C-TIE-A")["counterparty"]
+        tie_b = item_for(items, "C-TIE-B")["counterparty"]
+        assert (
+            client.post(
+                "/api/resolutions/match",
+                json={
+                    "ledger_transaction_id": tie_ledger["id"],
+                    "counterparty_transaction_id": tie_a["id"],
+                    "note": "external ticket identifies A",
+                },
+            ).status_code
+            == 201
+        )
+        assert (
+            client.post(
+                "/api/resolutions/accept-unmatched",
+                json={"transaction_id": tie_b["id"], "note": "separate record"},
+            ).status_code
+            == 201
+        )
+        assert client.get("/api/runs").json()[0]["summary"]["UNRESOLVED"] == 0
+        assert client.post(f"/api/runs/{run3['id']}/close").status_code == 200
+
+        final_ledger = upload_story(
+            client, "LEDGER", "07-ledger-final-correction.csv"
+        )
+        final_counterparty = upload_story(
+            client, "COUNTERPARTY", "08-counterparty-new-rows.csv"
+        )
+        assert final_ledger.json()["changed_count"] == 2
+        assert final_counterparty.json()["changed_count"] == 1
+        run4 = client.post("/api/runs").json()
+        assert_counts(
+            run4["summary"],
+            MATCHED=8,
+            DIFFERENT=0,
+            MANUALLY_MATCHED=2,
+            ACCEPTED_UNMATCHED=3,
+            EXCLUDED_CANCELLED=2,
+            UNRESOLVED=0,
+        )
+        assert client.post(f"/api/runs/{run4['id']}/close").status_code == 200
+
+        file_count = len(client.get("/api/files").json())
+        invalid = upload_story(client, "LEDGER", "90-ledger-invalid-atomic.csv")
+        assert invalid.status_code == 422
+        assert len(client.get("/api/files").json()) == file_count
+        duplicate = upload_story(
+            client, "COUNTERPARTY", "08-counterparty-new-rows.csv"
+        )
+        assert duplicate.json()["duplicate"] is True
+        assert len(client.get("/api/files").json()) == file_count
+
+    with engine.connect() as connection:
+        assert connection.scalar(select(func.count(IngestionFile.id))) == 8
+        assert connection.scalar(select(func.count(TransactionVersion.id))) == 28
+        assert set(connection.execute(select(IngestionFile.adapter_id)).scalars()) == {
+            "ledger-v1",
+            "counterparty-v1",
+            "ledger-canonical-v1",
+            "counterparty-canonical-v1",
+        }

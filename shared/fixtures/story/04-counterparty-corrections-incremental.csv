@@ -1,0 +1,3 @@
+reference,executed_at,symbol,direction,qty,unit_price,total,status
+ST-1002,2026-08-18 10:00:30,ETH-USD,S,5.00000000,2000.00,10000.00,SETTLED
+C-ONLY-1,2026-08-18 13:30:00,ADA-USD,B,100.00,0.40,40.00,SETTLED

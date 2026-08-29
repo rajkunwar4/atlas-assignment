@@ -1,0 +1,3 @@
+trade_id,traded_at,instrument,side,quantity,price,gross_amount,state
+ST-1003,2026-08-18T11:00:00Z,SOL-USD,BUY,100.00,152.00,15200.00,SETTLED
+L-ONLY-1,2026-08-18T13:00:00Z,LINK-USD,BUY,20.00,15.00,300.00,SETTLED
