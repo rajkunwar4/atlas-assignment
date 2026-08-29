@@ -480,6 +480,18 @@ header h1 {
 .upload-button input {
   display: none;
 }
+.upload-locked {
+  height: 38px;
+  border: 1px solid #d8d7cf;
+  background: #efeee8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #747b75;
+  font-size: 10px;
+  font-weight: 700;
+}
 .run-list {
   border: 1px solid var(--line);
   background: var(--paper);
@@ -824,6 +836,60 @@ td small {
 .resolution textarea {
   min-height: 75px;
   resize: vertical;
+}
+.candidate-comparison {
+  border: 1px solid #d8d8d0;
+  background: #fff;
+  padding: 14px;
+  margin: 10px 0 18px;
+}
+.candidate-comparison h4 {
+  font-size: 12px;
+  margin-bottom: 13px;
+}
+.candidate-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  border-bottom: 1px solid #e5e4dd;
+  padding-bottom: 10px;
+}
+.candidate-head small,
+.candidate-head strong {
+  display: block;
+}
+.candidate-head small {
+  color: #7d847e;
+  font: 8px DM Mono;
+  letter-spacing: 0.7px;
+}
+.candidate-head strong {
+  font: 11px DM Mono;
+  margin-top: 4px;
+}
+.candidate-comparison > div:not(.candidate-head) {
+  display: grid;
+  grid-template-columns: 86px 1fr 14px 1fr;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid #efeee8;
+  padding: 9px 0;
+  font: 10px DM Mono;
+}
+.candidate-comparison > div:last-child {
+  border-bottom: 0;
+}
+.candidate-comparison > div > small {
+  color: #777f79;
+  font: 9px Manrope;
+  font-weight: 700;
+}
+.candidate-difference {
+  color: #a34f2f;
+  background: #fff8f2;
+  margin: 0 -7px;
+  padding-left: 7px !important;
+  padding-right: 7px !important;
 }
 .resolution > div {
   display: flex;

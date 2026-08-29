@@ -6,7 +6,7 @@ test("completes a run and preserves a manual match after correction", async ({
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Source files" }),
+    page.getByRole("heading", { name: "Current source data" }),
   ).toBeVisible();
 
   const uploads = page.locator('input[type="file"]');
@@ -28,22 +28,28 @@ test("completes a run and preserves a manual match after correction", async ({
   await expect(page.getByText(/Delta 170/)).toBeVisible();
   await page.getByLabel("Review note").fill("Confirmed with counterparty");
   await page.getByRole("button", { name: "Accept differences" }).click();
-  await page.getByRole("button", { name: "Close detail" }).click();
+  await expect(page.getByRole("button", { name: "Close detail" })).toBeHidden();
 
   await page.getByRole("row", { name: /T-1015/ }).click();
   await page.getByLabel("Review note").fill("Clock difference confirmed");
   await page.getByRole("button", { name: "Accept differences" }).click();
-  await page.getByRole("button", { name: "Close detail" }).click();
+  await expect(page.getByRole("button", { name: "Close detail" })).toBeHidden();
 
   await page.getByRole("row", { name: /T-1016/ }).click();
   await page
     .getByLabel("Match with")
     .selectOption({ label: "C-9001 · BTC-USD" });
+  await expect(
+    page.getByRole("region", { name: "Selected candidate comparison" }),
+  ).toContainText("T-1016");
+  await expect(
+    page.getByRole("region", { name: "Selected candidate comparison" }),
+  ).toContainText("C-9001");
   await page
     .getByLabel("Resolution note")
     .fill("Matched using broker evidence");
   await page.getByRole("button", { name: "Save manual match" }).click();
-  await page.getByRole("button", { name: "Close detail" }).click();
+  await expect(page.getByRole("button", { name: "Close detail" })).toBeHidden();
 
   await expect(page.getByRole("button", { name: "Close run" })).toBeVisible();
   await page.getByRole("button", { name: "Close run" }).click();

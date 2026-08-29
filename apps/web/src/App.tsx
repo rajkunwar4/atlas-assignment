@@ -87,6 +87,7 @@ export default function App() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<number | null>(null);
   const [results, setResults] = useState<Results | null>(null);
+  const [allResults, setAllResults] = useState<Results | null>(null);
   const [tab, setTab] = useState("overview");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -124,6 +125,7 @@ export default function App() {
   useEffect(() => {
     setActiveRun(null);
     setResults(null);
+    setAllResults(null);
     load();
   }, [load]);
   useEffect(() => {
@@ -131,9 +133,14 @@ export default function App() {
       setResults(null);
       return;
     }
-    api
-      .results(activeRun, status, search)
-      .then(setResults)
+    Promise.all([
+      api.results(activeRun, status, search),
+      status || search ? api.results(activeRun) : Promise.resolve(null),
+    ])
+      .then(([filtered, unfiltered]) => {
+        setResults(filtered);
+        setAllResults(unfiltered ?? filtered);
+      })
       .catch((e: any) => setNotice({ kind: "error", text: e.message }));
   }, [api, activeRun, status, search]);
   const act = async (name: string, fn: () => Promise<any>, success: string) => {
@@ -144,7 +151,13 @@ export default function App() {
       if (activeRun) {
         const latest = (await api.runs())[0];
         setActiveRun(latest?.id ?? activeRun);
-        setResults(await api.results(latest?.id ?? activeRun, status, search));
+        const runId = latest?.id ?? activeRun;
+        const [filtered, unfiltered] = await Promise.all([
+          api.results(runId, status, search),
+          status || search ? api.results(runId) : Promise.resolve(null),
+        ]);
+        setResults(filtered);
+        setAllResults(unfiltered ?? filtered);
       }
       setNotice({ kind: "success", text: success });
     } catch (e: any) {
@@ -319,7 +332,7 @@ export default function App() {
       {selected ? (
         <Detail
           item={selected}
-          all={results?.items ?? []}
+          all={allResults?.items ?? []}
           close={() => setSelected(null)}
           match={(l, c, n) =>
             act(
@@ -363,6 +376,7 @@ function Overview({
   busy: string;
   onOpenRun: (id: number) => void;
 }) {
+  const openRun = runs.find((run) => run.status !== "CLOSED");
   return (
     <>
       <section className="hero">
@@ -402,11 +416,11 @@ function Overview({
         <div className="section-title">
           <div>
             <p className="eyebrow">01 / INPUTS</p>
-            <h2>Source files</h2>
+            <h2>Current source data</h2>
           </div>
           <p>
-            CSV formats are detected automatically and validated atomically.
-            Corrections create immutable row versions.
+            Each card shows the latest accepted CSV. Earlier rows remain current
+            unless a later file corrects them.
           </p>
         </div>
         <div className="source-grid">
@@ -421,7 +435,7 @@ function Overview({
                   <h3>{i ? "Counterparty statement" : "Your ledger"}</h3>
                 </div>
                 <span className={latest(source) ? "ready" : "waiting"}>
-                  {latest(source) ? "Ready" : "Needed"}
+                  {latest(source) ? "Current" : "Needed"}
                 </span>
               </div>
               {latest(source) ? (
@@ -443,16 +457,23 @@ function Overview({
                   <span>No accepted file yet</span>
                 </div>
               )}
-              <label className="upload-button">
-                <FileUp size={17} />
-                {busy === `upload-${source}` ? "Validating…" : "Choose CSV"}
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  disabled={busy !== ""}
-                  onChange={(e) => upload(source, e.target.files?.[0])}
-                />
-              </label>
+              {openRun ? (
+                <div className="upload-locked">
+                  <Clock3 size={16} />
+                  Uploads resume when run #{openRun.id} closes
+                </div>
+              ) : (
+                <label className="upload-button">
+                  <FileUp size={17} />
+                  {busy === `upload-${source}` ? "Validating…" : "Choose CSV"}
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={busy !== ""}
+                    onChange={(e) => upload(source, e.target.files?.[0])}
+                  />
+                </label>
+              )}
             </div>
           ))}
         </div>
@@ -688,6 +709,20 @@ function Detail({
         : x.status === "UNMATCHED_LEDGER",
     );
   const own = item.ledger ?? item.counterparty;
+  const selectedCandidate = candidates
+    .map((result) => result.ledger ?? result.counterparty)
+    .find((transaction) => String(transaction?.id) === candidate);
+  const ledgerPreview = unmatchedLedger ? own : selectedCandidate;
+  const counterpartyPreview = unmatchedLedger ? selectedCandidate : own;
+  const comparisonFields = [
+    "executed_at",
+    "instrument",
+    "side",
+    "quantity",
+    "price",
+    "gross_amount",
+    "state",
+  ] as const;
   return (
     <div
       className="scrim"
@@ -785,6 +820,40 @@ function Detail({
                     ))}
                   </select>
                 </label>
+                {selectedCandidate ? (
+                  <section
+                    className="candidate-comparison"
+                    aria-label="Selected candidate comparison"
+                  >
+                    <h4>Selected comparison</h4>
+                    <div className="candidate-head">
+                      <span>
+                        <small>YOUR LEDGER</small>
+                        <strong>{ledgerPreview?.external_id}</strong>
+                      </span>
+                      <span>
+                        <small>COUNTERPARTY</small>
+                        <strong>{counterpartyPreview?.external_id}</strong>
+                      </span>
+                    </div>
+                    {comparisonFields.map((field) => {
+                      const left = ledgerPreview?.[field];
+                      const right = counterpartyPreview?.[field];
+                      const differs = String(left) !== String(right);
+                      return (
+                        <div
+                          className={differs ? "candidate-difference" : ""}
+                          key={field}
+                        >
+                          <small>{label(field)}</small>
+                          <span>{String(left ?? "—")}</span>
+                          <ArrowRight size={13} />
+                          <span>{String(right ?? "—")}</span>
+                        </div>
+                      );
+                    })}
+                  </section>
+                ) : null}
               </>
             ) : (
               <p className="hint">
