@@ -1,14 +1,7 @@
 export type Source = "LEDGER" | "COUNTERPARTY";
-export type UploadMode = "INCREMENTAL" | "SNAPSHOT";
-export type Adapter = {
-  id: string;
-  source: Source;
-  description: string;
-  headers: string[];
-};
 export type Health = {
   status: string;
-  implementation: "python" | "node";
+  implementation: "python";
   version: string;
 };
 export type Ingestion = {
@@ -16,8 +9,6 @@ export type Ingestion = {
   source: Source;
   filename: string;
   checksum: string;
-  mode: UploadMode;
-  adapter_id: string;
   row_count: number;
   changed_count: number;
   duplicate?: boolean;

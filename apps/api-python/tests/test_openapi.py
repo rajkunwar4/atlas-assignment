@@ -15,7 +15,6 @@ def test_shared_contract_covers_public_routes():
     assert operations == {
         "getHealth",
         "listFiles",
-        "listAdapters",
         "uploadFile",
         "listRuns",
         "createRun",

@@ -26,9 +26,6 @@ class IngestionFile(Base):
     source: Mapped[str] = mapped_column(String(20), index=True)
     filename: Mapped[str] = mapped_column(String(255))
     checksum: Mapped[str] = mapped_column(String(64))
-    upload_mode: Mapped[str] = mapped_column(
-        String(20), default="INCREMENTAL", server_default="INCREMENTAL"
-    )
     adapter_id: Mapped[str] = mapped_column(String(80))
     row_count: Mapped[int] = mapped_column(Integer)
     changed_count: Mapped[int] = mapped_column(Integer)
@@ -39,9 +36,8 @@ class IngestionFile(Base):
         UniqueConstraint(
             "source",
             "checksum",
-            "upload_mode",
             "adapter_id",
-            name="uq_file_source_checksum_mode_adapter",
+            name="uq_file_source_checksum_adapter",
         ),
     )
 
@@ -52,13 +48,6 @@ class SourceTransaction(Base):
     source: Mapped[str] = mapped_column(String(20))
     external_id: Mapped[str] = mapped_column(String(120))
     current_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=text("true"), index=True
-    )
-    inactive_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    last_seen_file_id: Mapped[int | None] = mapped_column(
-        ForeignKey("ingestion_files.id"), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now, server_default=func.now()
     )

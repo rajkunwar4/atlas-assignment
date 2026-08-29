@@ -27,12 +27,6 @@ paths:
           name: source
           required: true
           schema: { $ref: '#/components/schemas/Source' }
-        - in: query
-          name: mode
-          schema: { $ref: '#/components/schemas/UploadMode', default: INCREMENTAL }
-        - in: query
-          name: adapter_id
-          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -46,16 +40,6 @@ paths:
         '201': { description: File accepted }
         '200': { description: Duplicate file }
         '422': { description: Validation error }
-  /api/adapters:
-    get:
-      operationId: listAdapters
-      parameters:
-        - in: query
-          name: source
-          required: true
-          schema: { $ref: '#/components/schemas/Source' }
-      responses:
-        '200': { description: Registered adapters compatible with the source }
   /api/runs:
     get:
       operationId: listRuns
@@ -140,9 +124,6 @@ components:
     Source:
       type: string
       enum: [LEDGER, COUNTERPARTY]
-    UploadMode:
-      type: string
-      enum: [INCREMENTAL, SNAPSHOT]
     RunStatus:
       type: string
       enum: [OPEN, READY_TO_CLOSE, CLOSED]

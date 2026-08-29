@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { ApiClient } from "./api";
 import type {
-  Adapter,
   Audit,
   Health,
   Ingestion,
@@ -30,7 +29,6 @@ import type {
   Results,
   Run,
   Source,
-  UploadMode,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -86,17 +84,6 @@ export default function App() {
   const api = useMemo(() => new ApiClient(API_URL), []);
   const [health, setHealth] = useState<Health | null>(null);
   const [files, setFiles] = useState<Ingestion[]>([]);
-  const [adapters, setAdapters] = useState<Record<Source, Adapter[]>>({
-    LEDGER: [],
-    COUNTERPARTY: [],
-  });
-  const [uploadModes, setUploadModes] = useState<Record<Source, UploadMode>>({
-    LEDGER: "INCREMENTAL",
-    COUNTERPARTY: "INCREMENTAL",
-  });
-  const [adapterOverrides, setAdapterOverrides] = useState<
-    Record<Source, string>
-  >({ LEDGER: "", COUNTERPARTY: "" });
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<number | null>(null);
   const [results, setResults] = useState<Results | null>(null);
@@ -112,25 +99,18 @@ export default function App() {
   );
   const load = useCallback(async () => {
     try {
-      const [h, f, r, a, s, ledgerAdapters, counterpartyAdapters] =
-        await Promise.all([
-          api.health(),
-          api.files(),
-          api.runs(),
-          api.audit(),
-          api.settings(),
-          api.adapters("LEDGER"),
-          api.adapters("COUNTERPARTY"),
-        ]);
+      const [h, f, r, a, s] = await Promise.all([
+        api.health(),
+        api.files(),
+        api.runs(),
+        api.audit(),
+        api.settings(),
+      ]);
       setHealth(h);
       setFiles(f);
       setRuns(r);
       setAudit(a);
       setSettings(s);
-      setAdapters({
-        LEDGER: ledgerAdapters,
-        COUNTERPARTY: counterpartyAdapters,
-      });
       setActiveRun((current) => current ?? r[0]?.id ?? null);
       setNotice(null);
     } catch (e: any) {
@@ -177,8 +157,7 @@ export default function App() {
     if (!file) return;
     await act(
       `upload-${source}`,
-      () =>
-        api.upload(source, file, uploadModes[source], adapterOverrides[source]),
+      () => api.upload(source, file),
       `${file.name} was validated and ingested.`,
     );
   };
@@ -190,7 +169,7 @@ export default function App() {
         setActiveRun(run.id);
         setTab("results");
       },
-      "Reconciliation completed with a reproducible snapshot.",
+      "Reconciliation cycle completed.",
     );
   const latest = (source: Source) => files.find((f) => f.source === source);
   const currentRun = runs.find((r) => r.id === activeRun) ?? runs[0];
@@ -241,7 +220,7 @@ export default function App() {
       <main>
         <header>
           <div>
-            <p className="eyebrow">OPERATIONS / DAILY CLOSE</p>
+            <p className="eyebrow">OPERATIONS / RECONCILIATION</p>
             <h1>{tab === "results" ? "Reconciliation" : label(tab)}</h1>
           </div>
           <div className="header-actions">
@@ -296,18 +275,6 @@ export default function App() {
               latest={latest}
               upload={upload}
               busy={busy}
-              adapters={adapters}
-              uploadModes={uploadModes}
-              setUploadMode={(source, mode) =>
-                setUploadModes((current) => ({ ...current, [source]: mode }))
-              }
-              adapterOverrides={adapterOverrides}
-              setAdapterOverride={(source, adapter) =>
-                setAdapterOverrides((current) => ({
-                  ...current,
-                  [source]: adapter,
-                }))
-              }
               onOpenRun={(id) => {
                 setActiveRun(id);
                 setTab("results");
@@ -387,11 +354,6 @@ function Overview({
   latest,
   upload,
   busy,
-  adapters,
-  uploadModes,
-  setUploadMode,
-  adapterOverrides,
-  setAdapterOverride,
   onOpenRun,
 }: {
   files: Ingestion[];
@@ -399,11 +361,6 @@ function Overview({
   latest: (s: Source) => Ingestion | undefined;
   upload: (s: Source, f?: File) => void;
   busy: string;
-  adapters: Record<Source, Adapter[]>;
-  uploadModes: Record<Source, UploadMode>;
-  setUploadMode: (source: Source, mode: UploadMode) => void;
-  adapterOverrides: Record<Source, string>;
-  setAdapterOverride: (source: Source, adapter: string) => void;
   onOpenRun: (id: number) => void;
 }) {
   return (
@@ -411,7 +368,7 @@ function Overview({
       <section className="hero">
         <div>
           <span className="kicker">
-            <ShieldCheck size={15} /> Controlled daily close
+            <ShieldCheck size={15} /> Controlled reconciliation
           </span>
           <h2>
             Find the differences.
@@ -448,8 +405,8 @@ function Overview({
             <h2>Source files</h2>
           </div>
           <p>
-            CSV files are validated atomically. Corrections create immutable row
-            versions.
+            CSV formats are detected automatically and validated atomically.
+            Corrections create immutable row versions.
           </p>
         </div>
         <div className="source-grid">
@@ -475,8 +432,7 @@ function Overview({
                       <strong>{latest(source)!.filename}</strong>
                       <small>
                         {latest(source)!.row_count} rows ·{" "}
-                        {latest(source)!.changed_count} changed ·{" "}
-                        {label(latest(source)!.mode)}
+                        {latest(source)!.changed_count} changed
                       </small>
                     </span>
                   </div>
@@ -487,38 +443,6 @@ function Overview({
                   <span>No accepted file yet</span>
                 </div>
               )}
-              <div className="upload-options">
-                <label>
-                  Upload meaning
-                  <select
-                    value={uploadModes[source]}
-                    onChange={(event) =>
-                      setUploadMode(source, event.target.value as UploadMode)
-                    }
-                  >
-                    <option value="INCREMENTAL">
-                      Correction / incremental
-                    </option>
-                    <option value="SNAPSHOT">Complete snapshot</option>
-                  </select>
-                </label>
-                <label>
-                  File format
-                  <select
-                    value={adapterOverrides[source]}
-                    onChange={(event) =>
-                      setAdapterOverride(source, event.target.value)
-                    }
-                  >
-                    <option value="">Detect automatically</option>
-                    {adapters[source].map((adapter) => (
-                      <option key={adapter.id} value={adapter.id}>
-                        {adapter.description}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
               <label className="upload-button">
                 <FileUp size={17} />
                 {busy === `upload-${source}` ? "Validating…" : "Choose CSV"}

@@ -461,31 +461,6 @@ header h1 {
   color: #8a918c;
   font-size: 11px;
 }
-.upload-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.upload-options label {
-  display: grid;
-  gap: 5px;
-  color: #707871;
-  font: 9px DM Mono;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-.upload-options select {
-  min-width: 0;
-  border: 1px solid #d5d7d0;
-  background: white;
-  padding: 8px;
-  color: #344039;
-  font:
-    10px Inter,
-    sans-serif;
-  text-transform: none;
-}
 .upload-button {
   height: 38px;
   border: 1px dashed #aeb3ac;

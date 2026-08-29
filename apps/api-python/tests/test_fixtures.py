@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from app.domain import Transaction, reconcile
-from app.ingestion import FileValidationError, parse_csv
+from app import ingestion
+from app.ingestion import Adapter, FileValidationError, parse_csv
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "shared/fixtures"
@@ -105,6 +106,21 @@ def test_duplicate_row_inside_one_file_is_collapsed():
     identifiers = [data["external_id"] for data, _, _ in rows]
     assert identifiers.count("T-2015") == 1
     assert len(identifiers) == len(set(identifiers))
+
+
+def test_ambiguous_header_is_rejected(monkeypatch):
+    original = ingestion.ADAPTERS[0]
+    duplicate = Adapter(
+        "ledger-ambiguous-test",
+        original.source,
+        "Test-only duplicate signature",
+        original.headers,
+        original.normalize,
+    )
+    monkeypatch.setattr(ingestion, "ADAPTERS", (*ingestion.ADAPTERS, duplicate))
+    with pytest.raises(FileValidationError) as raised:
+        parse_csv((FIXTURES / "ledger.csv").read_bytes(), "LEDGER")
+    assert raised.value.errors[0]["reason"] == "format is ambiguous"
 
 
 @pytest.mark.parametrize("case", INVALID["files"], ids=lambda case: case["path"])

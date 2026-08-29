@@ -9,11 +9,11 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Uploa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 from .db import SessionLocal, get_db
 from .domain import DEFAULT_SETTINGS, Transaction, reconcile
-from .ingestion import FileValidationError, adapters_for, parse_csv, resolve_adapter
+from .ingestion import FileValidationError, parse_csv, resolve_adapter
 from .models import (
     AuditEvent,
     FieldDifference,
@@ -105,7 +105,6 @@ def load_transactions(db):
             TransactionVersion,
             SourceTransaction.current_version_id == TransactionVersion.id,
         )
-        .where(SourceTransaction.active)
     ).all()
     result = []
     for stable, version in rows:
@@ -272,41 +271,13 @@ def health():
     return {"status": "ok", "implementation": "python", "version": "1.0.0"}
 
 
-@app.get("/api/adapters")
-def list_adapters(source: str = Query(...)):
-    source = source.upper()
-    if source not in ("LEDGER", "COUNTERPARTY"):
-        raise HTTPException(
-            422,
-            {
-                "error": {
-                    "code": "INVALID_SOURCE",
-                    "message": "source must be LEDGER or COUNTERPARTY",
-                    "details": [],
-                }
-            },
-        )
-    return [
-        {
-            "id": adapter.id,
-            "source": adapter.source,
-            "description": adapter.description,
-            "headers": list(adapter.headers),
-        }
-        for adapter in adapters_for(source)
-    ]
-
-
 @app.post("/api/files", status_code=201)
 async def upload_file(
     source: str = Query(...),
-    mode: str = Query("INCREMENTAL"),
-    adapter_id: str | None = Query(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     source = source.upper()
-    mode = mode.upper()
     if source not in ("LEDGER", "COUNTERPARTY"):
         raise HTTPException(
             422,
@@ -314,17 +285,6 @@ async def upload_file(
                 "error": {
                     "code": "INVALID_SOURCE",
                     "message": "source must be LEDGER or COUNTERPARTY",
-                    "details": [],
-                }
-            },
-        )
-    if mode not in ("INCREMENTAL", "SNAPSHOT"):
-        raise HTTPException(
-            422,
-            {
-                "error": {
-                    "code": "INVALID_UPLOAD_MODE",
-                    "message": "mode must be INCREMENTAL or SNAPSHOT",
                     "details": [],
                 }
             },
@@ -343,7 +303,7 @@ async def upload_file(
         )
     checksum = hashlib.sha256(content).hexdigest()
     try:
-        adapter = resolve_adapter(content, source, adapter_id)
+        adapter = resolve_adapter(content, source)
     except FileValidationError as exc:
         raise HTTPException(
             422,
@@ -359,7 +319,6 @@ async def upload_file(
         select(IngestionFile).where(
             IngestionFile.source == source,
             IngestionFile.checksum == checksum,
-            IngestionFile.upload_mode == mode,
             IngestionFile.adapter_id == adapter.id,
         )
     )
@@ -369,8 +328,6 @@ async def upload_file(
             "source": source,
             "filename": duplicate.filename,
             "checksum": checksum,
-            "mode": duplicate.upload_mode,
-            "adapter_id": duplicate.adapter_id,
             "row_count": duplicate.row_count,
             "changed_count": duplicate.changed_count,
             "duplicate": True,
@@ -391,7 +348,7 @@ async def upload_file(
             },
         )
     try:
-        rows = parse_csv(content, source, adapter.id)
+        rows = parse_csv(content, source)
     except FileValidationError as exc:
         raise HTTPException(
             422,
@@ -407,7 +364,6 @@ async def upload_file(
         source=source,
         filename=file.filename or "upload.csv",
         checksum=checksum,
-        upload_mode=mode,
         adapter_id=adapter.id,
         row_count=len(rows),
         changed_count=0,
@@ -434,11 +390,7 @@ async def upload_file(
             else None
         )
         # Unchanged rows do not create noisy versions; changed values remain immutable.
-        was_inactive = not stable.active
-        stable.active = True
-        stable.inactive_reason = None
-        stable.last_seen_file_id = ingestion.id
-        if current and current.fingerprint == fingerprint and not was_inactive:
+        if current and current.fingerprint == fingerprint:
             continue
         version_number = (
             db.scalar(
@@ -460,21 +412,6 @@ async def upload_file(
         db.flush()
         stable.current_version_id = version.id
         changed += 1
-    if mode == "SNAPSHOT":
-        omitted = db.scalars(
-            select(SourceTransaction).where(
-                SourceTransaction.source == source,
-                SourceTransaction.active,
-                or_(
-                    SourceTransaction.last_seen_file_id.is_(None),
-                    SourceTransaction.last_seen_file_id != ingestion.id,
-                ),
-            )
-        ).all()
-        for stable in omitted:
-            stable.active = False
-            stable.inactive_reason = "ABSENT_FROM_SNAPSHOT"
-        changed += len(omitted)
     ingestion.changed_count = changed
     audit(
         db,
@@ -483,7 +420,6 @@ async def upload_file(
         ingestion.id,
         {
             "source": source,
-            "mode": mode,
             "adapter_id": adapter.id,
             "rows": len(rows),
             "changed": changed,
@@ -495,8 +431,6 @@ async def upload_file(
         "source": source,
         "filename": ingestion.filename,
         "checksum": checksum,
-        "mode": mode,
-        "adapter_id": adapter.id,
         "row_count": len(rows),
         "changed_count": changed,
         "duplicate": False,
@@ -512,8 +446,6 @@ def files(db: Session = Depends(get_db)):
             "source": x.source,
             "filename": x.filename,
             "checksum": x.checksum,
-            "mode": x.upload_mode,
-            "adapter_id": x.adapter_id,
             "row_count": x.row_count,
             "changed_count": x.changed_count,
             "created_at": iso(x.created_at),
@@ -542,7 +474,7 @@ def create_run(db: Session = Depends(get_db)):
         )
     sources = set(
         db.scalars(
-            select(SourceTransaction.source).where(SourceTransaction.active)
+            select(SourceTransaction.source)
         ).all()
     )
     if sources != {"LEDGER", "COUNTERPARTY"}:

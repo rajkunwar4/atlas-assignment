@@ -1,13 +1,4 @@
-import type {
-  Adapter,
-  Audit,
-  Health,
-  Ingestion,
-  Results,
-  Run,
-  Source,
-  UploadMode,
-} from "./types";
+import type { Audit, Health, Ingestion, Results, Run, Source } from "./types";
 export class ApiClient {
   constructor(public baseUrl: string) {}
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -24,21 +15,13 @@ export class ApiClient {
   }
   health = () => this.request<Health>("/api/health");
   files = () => this.request<Ingestion[]>("/api/files");
-  adapters = (source: Source) =>
-    this.request<Adapter[]>(`/api/adapters?source=${source}`);
-  upload = (source: Source, file: File, mode: UploadMode, adapterId = "") => {
+  upload = (source: Source, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const adapter = adapterId
-      ? `&adapter_id=${encodeURIComponent(adapterId)}`
-      : "";
-    return this.request<Ingestion>(
-      `/api/files?source=${source}&mode=${mode}${adapter}`,
-      {
-        method: "POST",
-        body: form,
-      },
-    );
+    return this.request<Ingestion>(`/api/files?source=${source}`, {
+      method: "POST",
+      body: form,
+    });
   };
   runs = () => this.request<Run[]>("/api/runs");
   createRun = () => this.request<Run>("/api/runs", { method: "POST" });

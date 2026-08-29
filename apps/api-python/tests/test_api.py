@@ -6,10 +6,10 @@ os.environ["DATABASE_URL"] = os.getenv(
     "postgresql://atlas:atlas@localhost:55432/atlas_test?sslmode=disable",
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from app.db import engine
 from app.main import app
-from app.models import SourceTransaction, TransactionVersion
+from app.models import AuditEvent, IngestionFile, SourceTransaction, TransactionVersion
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -37,12 +37,9 @@ def upload(client, source, name):
     )
 
 
-def upload_text(client, source, content, *, mode="INCREMENTAL", adapter_id=None):
-    query = f"source={source}&mode={mode}"
-    if adapter_id:
-        query += f"&adapter_id={adapter_id}"
+def upload_text(client, source, content):
     return client.post(
-        f"/api/files?{query}",
+        f"/api/files?source={source}",
         files={"file": ("rows.csv", content.encode(), "text/csv")},
     )
 
@@ -69,9 +66,50 @@ def test_upload_duplicate_run_and_correction_history():
             f"/api/transactions/{t1011['ledger']['id']}/history"
         ).json()
         assert len(history) == 2
+        assert [version["data"]["gross_amount"] for version in history] == [
+            "34170.00",
+            "34000.00",
+        ]
 
 
-def test_adapter_detection_and_snapshot_retire_omitted_rows():
+def test_every_registered_format_is_detected_automatically():
+    canonical_header = (
+        "transaction_id,executed_at,instrument,side,quantity,unit_price,"
+        "gross_amount,state\n"
+    )
+    with TestClient(app) as client:
+        assert upload(client, "LEDGER", "ledger.csv").status_code == 201
+        assert upload(client, "COUNTERPARTY", "counterparty.csv").status_code == 201
+        assert (
+            upload_text(
+                client,
+                "LEDGER",
+                canonical_header
+                + "LC-1,2026-08-11T10:00:00Z,AAPL,BUY,1,10,10,SETTLED\n",
+            ).status_code
+            == 201
+        )
+        assert (
+            upload_text(
+                client,
+                "COUNTERPARTY",
+                canonical_header
+                + "CC-1,2026-08-11T10:00:00Z,AAPL,BUY,1,10,10,SETTLED\n",
+            ).status_code
+            == 201
+        )
+
+    with engine.connect() as connection:
+        detected = set(connection.execute(select(IngestionFile.adapter_id)).scalars())
+    assert detected == {
+        "ledger-v1",
+        "counterparty-v1",
+        "ledger-canonical-v1",
+        "counterparty-canonical-v1",
+    }
+
+
+def test_incremental_upload_keeps_omissions_and_versions_only_corrections():
     header = (
         "transaction_id,executed_at,instrument,side,quantity,unit_price,"
         "gross_amount,state,desk_note\n"
@@ -84,31 +122,43 @@ def test_adapter_detection_and_snapshot_retire_omitted_rows():
         "A,2026-08-11T10:00:00Z,AAPL,BUY,1,10,10,SETTLED,alpha\n"
         "C,2026-08-11T10:02:00Z,NVDA,BUY,3,30,90,SETTLED,gamma\n"
     )
+    corrected = second.replace(",1,10,10,SETTLED", ",1,11,11,SETTLED")
     with TestClient(app) as client:
-        adapters = client.get("/api/adapters?source=LEDGER").json()
-        assert {item["id"] for item in adapters} >= {
-            "ledger-v1",
-            "ledger-canonical-v1",
-        }
         accepted = upload_text(client, "LEDGER", first)
         assert accepted.status_code == 201
-        assert accepted.json()["adapter_id"] == "ledger-canonical-v1"
-        snapshot = upload_text(client, "LEDGER", second, mode="SNAPSHOT")
-        assert snapshot.status_code == 201
+        assert "adapter_id" not in accepted.json()
+        assert "mode" not in accepted.json()
+        incremental = upload_text(client, "LEDGER", second)
+        assert incremental.status_code == 201
+        assert incremental.json()["changed_count"] == 1
+        correction = upload_text(client, "LEDGER", corrected)
+        assert correction.status_code == 201
+        assert correction.json()["changed_count"] == 1
+        assert all(
+            "adapter_id" not in item and "mode" not in item
+            for item in client.get("/api/files").json()
+        )
 
     with engine.connect() as connection:
         rows = connection.execute(
-            select(
-                SourceTransaction.external_id,
-                SourceTransaction.active,
-                SourceTransaction.inactive_reason,
-            ).order_by(SourceTransaction.external_id)
+            select(SourceTransaction.external_id).order_by(SourceTransaction.external_id)
         ).all()
-    assert rows == [
-        ("A", True, None),
-        ("B", False, "ABSENT_FROM_SNAPSHOT"),
-        ("C", True, None),
-    ]
+        version_counts = connection.execute(
+            select(SourceTransaction.external_id, func.count(TransactionVersion.id))
+            .join(TransactionVersion)
+            .group_by(SourceTransaction.external_id)
+            .order_by(SourceTransaction.external_id)
+        ).all()
+        adapter_id = connection.execute(select(IngestionFile.adapter_id).limit(1)).scalar_one()
+        audit_adapter = connection.execute(
+            select(AuditEvent.details_json["adapter_id"].astext)
+            .where(AuditEvent.action == "FILE_INGESTED")
+            .limit(1)
+        ).scalar_one()
+    assert rows == [("A",), ("B",), ("C",)]
+    assert version_counts == [("A", 2), ("B", 1), ("C", 1)]
+    assert adapter_id == "ledger-canonical-v1"
+    assert audit_adapter == "ledger-canonical-v1"
     with engine.connect() as connection:
         raw = connection.execute(
             select(TransactionVersion.raw_json)
@@ -330,13 +380,6 @@ def test_invalid_upload_is_atomic_and_invalid_states_are_rejected():
         )
         assert bad_source.status_code == 422
         assert bad_source.json()["error"]["code"] == "INVALID_SOURCE"
-
-        bad_mode = client.post(
-            "/api/files?source=LEDGER&mode=REPLACE",
-            files={"file": ("ledger.csv", b"header\n", "text/csv")},
-        )
-        assert bad_mode.status_code == 422
-        assert bad_mode.json()["error"]["code"] == "INVALID_UPLOAD_MODE"
 
         assert upload(client, "LEDGER", "ledger.csv").status_code == 201
         missing_source = client.post("/api/runs")

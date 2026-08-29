@@ -157,25 +157,8 @@ def _decode(content: bytes) -> str:
         )
 
 
-def resolve_adapter(
-    content: bytes, source: str, requested: str | None = None
-) -> Adapter:
+def resolve_adapter(content: bytes, source: str) -> Adapter:
     candidates = adapters_for(source)
-    if requested:
-        selected = next((item for item in candidates if item.id == requested), None)
-        if not selected:
-            raise FileValidationError(
-                [
-                    {
-                        "row": 1,
-                        "column": "adapter_id",
-                        "value": requested,
-                        "reason": "adapter is not registered for this source",
-                    }
-                ]
-            )
-        return selected
-
     header = tuple(next(csv.reader(io.StringIO(_decode(content))), []))
     matches = [
         item for item in candidates if header[: len(item.headers)] == item.headers
@@ -200,10 +183,10 @@ def resolve_adapter(
     return matches[0]
 
 
-def parse_csv(content: bytes, source: str, adapter_id: str | None = None):
+def parse_csv(content: bytes, source: str):
     """Validate a complete file and return canonical rows without side effects."""
     text = _decode(content)
-    adapter = resolve_adapter(content, source, adapter_id)
+    adapter = resolve_adapter(content, source)
     reader = csv.DictReader(io.StringIO(text))
     actual_headers = tuple(reader.fieldnames or ())
     if actual_headers[: len(adapter.headers)] != adapter.headers:
